@@ -109,8 +109,8 @@ func (d *Datasource) handleQuery(ctx context.Context, nrClient *newrelic.NewReli
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // This is used for the "Test" button on the datasource configuration page.
-func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-
+func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+	// Step 1: Load plugin settings from Grafana's request
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
 		log.DefaultLogger.Error("Failed to load plugin settings for health check", "error", err)
@@ -120,8 +120,23 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 		}, nil
 	}
 
-	healthResult, checkErr := util.CheckHealth(config)
-	if checkErr != nil { // This should ideally not happen if util.CheckHealth only returns *backend.CheckHealthResult
+	// Step 2: Attempt to create a New Relic client using the API key from settings
+	// This will catch cases where the API key is missing or invalid format.
+	nrClient, err := connection.GetClient(config.Secrets.ApiKey)
+	if err != nil {
+		log.DefaultLogger.Error("Failed to create New Relic client during health check", "error", err)
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("API key invalid or client failed to initialize: %s", err.Error()),
+		}, nil
+	}
+
+	// Step 3: Delegate the comprehensive health check (including API call)
+	// to the util package, passing the client and context.
+	healthResult, checkErr := util.CheckHealth(ctx, config, nrClient)
+	if checkErr != nil {
+		// This `checkErr` should ideally be nil if util.CheckHealth only returns `*backend.CheckHealthResult`
+		// and not a Go error, but kept for robustness.
 		log.DefaultLogger.Error("Unexpected error during health check utility call", "error", checkErr)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
