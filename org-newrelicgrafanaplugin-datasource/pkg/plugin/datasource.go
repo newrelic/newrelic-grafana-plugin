@@ -4,113 +4,131 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/newrelic/newrelic-client-go/newrelic"
+	"github.com/org/newrelic-grafana-plugin/pkg/connection"
+	"github.com/org/newrelic-grafana-plugin/pkg/dataformatter"
 	"github.com/org/newrelic-grafana-plugin/pkg/models"
+	"github.com/org/newrelic-grafana-plugin/pkg/nrql"
+	"github.com/org/newrelic-grafana-plugin/pkg/util"
 )
 
-// Make sure Datasource implements required interfaces. This is important to do
-// since otherwise we will only get a not implemented error response from plugin in
-// runtime. In this example datasource instance implements backend.QueryDataHandler,
-// backend.CheckHealthHandler interfaces. Plugin should not implement all these
-// interfaces - only those which are required for a particular task.
 var (
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
+// Datasource is an example datasource which can respond to data queries, reports
+// its health and has streaming skills.
+type Datasource struct{}
+
 // NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
-
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
-type Datasource struct{}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
 // be disposed and a new one will be created using NewSampleDatasource factory function.
 func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
+	log.DefaultLogger.Debug("New Relic Datasource instance disposed.")
 }
 
-// QueryData handles multiple queries and returns multiple responses.
-// req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
-// The QueryDataResponse contains a map of RefID to the response for each query, and each response
-// contains Frames ([]*Frame).
+// QueryData handles incoming data queries from Grafana.
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
-	// loop over queries and execute them individually.
-	for _, q := range req.Queries {
-		res := d.query(ctx, req.PluginContext, q)
+	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
+	if err != nil {
+		log.DefaultLogger.Error("Failed to load plugin settings", "error", err)
+		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
+	}
 
-		// save the response in a hashmap
-		// based on with RefID as identifier
-		response.Responses[q.RefID] = res
+	if err := util.ValidatePluginSettings(config); err != nil {
+		log.DefaultLogger.Error("Invalid plugin configuration", "error", err)
+		return nil, fmt.Errorf("invalid plugin configuration: %w", err)
+	}
+
+	nrClient, err := connection.GetClient(config.Secrets.ApiKey)
+	if err != nil {
+		log.DefaultLogger.Error("Failed to create New Relic client", "error", err)
+		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
+	}
+
+	for _, q := range req.Queries {
+		res := d.handleQuery(ctx, nrClient, config, q)
+		response.Responses[q.RefID] = *res
 	}
 
 	return response, nil
 }
 
-type queryModel struct{}
+// handleQuery processes a single Grafana data query.
+func (d *Datasource) handleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
+	resp := &backend.DataResponse{}
 
-func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-	var response backend.DataResponse
-
-	// Unmarshal the JSON into our queryModel.
-	var qm queryModel
-
-	err := json.Unmarshal(query.JSON, &qm)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+	// Parse the query JSON
+	var qm models.QueryModel
+	if err := json.Unmarshal(query.JSON, &qm); err != nil {
+		resp.Error = fmt.Errorf("error parsing query JSON: %w", err)
+		log.DefaultLogger.Error("Error parsing query JSON", "refId", query.RefID, "error", err)
+		return resp
 	}
 
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
-	frame := data.NewFrame("response")
+	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID)
 
-	// add fields.
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
-	)
+	nrqlQueryText := "SELECT count(*) FROM Transaction"
+	if qm.QueryText != "" {
+		nrqlQueryText = qm.QueryText
+	}
 
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
+	accountID := config.Secrets.AccountId
+	if qm.AccountID > 0 {
+		accountID = qm.AccountID
+	}
 
-	return response
+	results, err := nrql.ExecuteNRQLQuery(ctx, nrClient, accountID, nrqlQueryText)
+	if err != nil {
+		resp.Error = fmt.Errorf("NRQL query execution failed: %w", err)
+		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "query", nrqlQueryText, "accountID", accountID, "error", err)
+		return resp
+	}
+
+	if dataformatter.IsCountQuery(results) {
+		return dataformatter.FormatCountQueryResults(results)
+	}
+	return dataformatter.FormatRegularQueryResults(results, query)
+
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
-// The main use case for these health checks is the test button on the
-// datasource configuration page which allows users to verify that
-// a datasource is working as expected.
+// This is used for the "Test" button on the datasource configuration page.
 func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	res := &backend.CheckHealthResult{}
+
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
-
 	if err != nil {
-		res.Status = backend.HealthStatusError
-		res.Message = "Unable to load settings"
-		return res, nil
+		log.DefaultLogger.Error("Failed to load plugin settings for health check", "error", err)
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Failed to load plugin settings for health check: %s", err.Error()),
+		}, nil
 	}
 
-	if config.Secrets.ApiKey == "" {
-		res.Status = backend.HealthStatusError
-		res.Message = "API key is missing"
-		return res, nil
+	healthResult, checkErr := util.CheckHealth(config)
+	if checkErr != nil { // This should ideally not happen if util.CheckHealth only returns *backend.CheckHealthResult
+		log.DefaultLogger.Error("Unexpected error during health check utility call", "error", checkErr)
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Unexpected error during health check: %s", checkErr.Error()),
+		}, nil
 	}
+	log.DefaultLogger.Debug("Health check completed", "status", healthResult.Status.String(), "message", healthResult.Message)
+	return healthResult, nil
 
-	return &backend.CheckHealthResult{
-		Status:  backend.HealthStatusOk,
-		Message: "Data source is working",
-	}, nil
 }

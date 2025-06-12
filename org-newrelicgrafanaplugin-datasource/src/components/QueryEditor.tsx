@@ -1,45 +1,45 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack } from '@grafana/ui';
+import React, { useState } from 'react';
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
+import { Input, Button } from '@grafana/ui';
 import { MyDataSourceOptions, MyQuery } from '../types';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, queryText: event.target.value });
+export const QueryEditor: React.FC<Props> = ({ query, onChange, onRunQuery }) => {
+  const [queryText, setQueryText] = useState(query.queryText || '');
+  const [responseData] = useState<string | null>(null);
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setQueryText(value);
+    onChange({ ...query, queryText: value });
   };
 
-  const onConstantChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, constant: parseFloat(event.target.value) });
-    // executes the query
+  const handleSubmit = () => {
+    // Trigger query execution handled by Grafana QueryData infrastructure
     onRunQuery();
   };
 
-  const { queryText, constant } = query;
-
   return (
-    <Stack gap={0}>
-      <InlineField label="Constant">
+    <div>
+      <div className="gf-form">
         <Input
-          id="query-editor-constant"
-          onChange={onConstantChange}
-          value={constant}
-          width={8}
-          type="number"
-          step="0.1"
+          value={queryText}
+          onChange={handleInputChange}
+          width={40}
+          placeholder="Enter query"
         />
-      </InlineField>
-      <InlineField label="Query Text" labelWidth={16} tooltip="Not used yet">
-        <Input
-          id="query-editor-query-text"
-          onChange={onQueryTextChange}
-          value={queryText || ''}
-          required
-          placeholder="Enter a query"
-        />
-      </InlineField>
-    </Stack>
+        <Button onClick={handleSubmit} variant="primary">
+          Submit
+        </Button>
+      </div>
+      {responseData && (
+        <div style={{ marginTop: '10px', whiteSpace: 'pre-wrap' }}>
+          <strong>Response Data:</strong>
+          <pre>{responseData}</pre> {/* Display the response data */}
+        </div>
+      )}
+    </div>
   );
-}
+};
