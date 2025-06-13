@@ -1,5 +1,5 @@
 import React, { ChangeEvent } from 'react';
-import { InlineField, Input, SecretInput } from '@grafana/ui';
+import { InlineField,  SecretInput } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
@@ -8,17 +8,17 @@ interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions, 
 
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
-  const { jsonData, secureJsonFields, secureJsonData } = options;
+  const { secureJsonFields, secureJsonData } = options;
 
-  const onPathChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onOptionsChange({
-      ...options,
-      jsonData: {
-        ...jsonData,
-        path: event.target.value,
-      },
-    });
-  };
+  // const onPathChange = (event: ChangeEvent<HTMLInputElement>) => {
+  //   onOptionsChange({
+  //     ...options,
+  //     jsonData: {
+  //       ...jsonData,
+  //       path: event.target.value,
+  //     },
+  //   });
+  // };
 
   // Secure field (only sent to the backend)
   const onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -71,7 +71,7 @@ export function ConfigEditor(props: Props) {
 
   return (
     <>
-      <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+      {/* <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
         <Input
           id="config-editor-path"
           onChange={onPathChange}
@@ -79,7 +79,7 @@ export function ConfigEditor(props: Props) {
           placeholder="Enter the path, e.g. /api/v1"
           width={40}
         />
-      </InlineField>
+      </InlineField> */}
       <InlineField label="API Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
         <SecretInput
           required
