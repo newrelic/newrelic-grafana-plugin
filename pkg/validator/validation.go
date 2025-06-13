@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
+	nrErrors "github.com/newrelic/newrelic-client-go/v2/pkg/errors"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
 )
@@ -57,6 +58,15 @@ func CheckHealth(ctx context.Context, config *models.PluginSettings, nrClient *n
 	// We don't care about the results, just that the call succeeds.
 	_, err := nrClient.Nrdb.QueryWithContext(ctx, config.Secrets.AccountId, nrdb.NRQL(testNRQLQuery))
 	if err != nil {
+
+		if _, ok := err.(*nrErrors.UnauthorizedError); ok {
+
+			return &backend.CheckHealthResult{
+				Status:  backend.HealthStatusError,
+				Message: "An error occurred with connecting to NewRelic.Could not connect to NewRelic. This usually happens when the API key is incorrect.",
+			}, nil
+		}
+
 		// If there's an error, it indicates a connectivity or authentication issue.
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
