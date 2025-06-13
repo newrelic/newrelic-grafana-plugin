@@ -2,17 +2,14 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/client"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/dataformatter"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/handler"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/nrql"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/validator"
 )
 
@@ -62,50 +59,11 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	}
 
 	for _, q := range req.Queries {
-		res := d.handleQuery(ctx, nrClient, config, q)
+		res := handler.HandleQuery(ctx, nrClient, config, q)
 		response.Responses[q.RefID] = *res
 	}
 
 	return response, nil
-}
-
-// handleQuery processes a single Grafana data query.
-func (d *Datasource) handleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
-	resp := &backend.DataResponse{}
-
-	// Parse the query JSON
-	var qm models.QueryModel
-	if err := json.Unmarshal(query.JSON, &qm); err != nil {
-		resp.Error = fmt.Errorf("error parsing query JSON: %w", err)
-		log.DefaultLogger.Error("Error parsing query JSON", "refId", query.RefID, "error", err)
-		return resp
-	}
-
-	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID)
-
-	nrqlQueryText := "SELECT count(*) FROM Transaction"
-	if qm.QueryText != "" {
-		nrqlQueryText = qm.QueryText
-	}
-
-	accountID := config.Secrets.AccountId
-	if qm.AccountID > 0 {
-		accountID = qm.AccountID
-	}
-
-	results, err := nrql.ExecuteNRQLQuery(ctx, nrClient, accountID, nrqlQueryText)
-	if err != nil {
-		resp.Error = fmt.Errorf("NRQL query execution failed: %w", err)
-		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "query", nrqlQueryText, "accountID", accountID, "error", err)
-		return resp
-	}
-
-	// if dataformatter.IsCountQuery(results) {
-	// 	return dataformatter.FormatCountQueryResults(results)
-	// }
-	// return dataformatter.FormatRegularQueryResults(results, query)
-	return dataformatter.FormatQueryResults(results, query)
-
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
