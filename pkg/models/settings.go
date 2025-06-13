@@ -16,9 +16,14 @@ type PluginSettingsError struct {
 
 func (e *PluginSettingsError) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("plugin settings error: %s: %v", e.Msg, e.Err)
+
+		if e.Msg != "" {
+			return fmt.Sprintf("%s: %v", e.Msg, e.Err)
+		}
+		return fmt.Sprintf("%v", e.Err)
+
 	}
-	return fmt.Sprintf("plugin settings error: %s", e.Msg)
+	return fmt.Sprintf(" %s", e.Msg)
 }
 
 func (e *PluginSettingsError) Unwrap() error {
@@ -49,7 +54,7 @@ func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSetti
 	secretSettings, err := loadSecretPluginSettings(source.DecryptedSecureJSONData)
 
 	if err != nil {
-		return nil, &PluginSettingsError{Msg: "could not load secure plugin settings", Err: err}
+		return nil, &PluginSettingsError{Err: err}
 	}
 
 	settings.Secrets = secretSettings
@@ -62,12 +67,12 @@ func loadSecretPluginSettings(source map[string]string) (*SecretPluginSettings, 
 
 	apiKey := source["apiKey"]
 	if apiKey == "" {
-		return nil, &PluginSettingsError{Msg: "API key is missing in secure settings"}
+		return nil, &PluginSettingsError{Msg: "Enter New Relic API key."}
 	}
 
 	accountIdStr := source["accountID"]
 	if accountIdStr == "" {
-		return nil, &PluginSettingsError{Msg: "Account ID is missing in secure settings"}
+		return nil, &PluginSettingsError{Msg: "Enter an account ID. This must be a valid, positive number."}
 	}
 
 	accountId, err := strconv.Atoi(accountIdStr)

@@ -46,11 +46,14 @@ export function ConfigEditor(props: Props) {
 
   // New secure field handler
   const onAccountIdChange = (event: ChangeEvent<HTMLInputElement>) => {
+
+    const numericValue = event.target.value.replace(/[^0-9]/g, '');
+
     onOptionsChange({
       ...options,
       secureJsonData: {
         ...secureJsonData,
-        accountID: event.target.value,
+        accountID: numericValue,
       },
     });
   };
@@ -104,6 +107,7 @@ export function ConfigEditor(props: Props) {
           width={40}
           onReset={onResetAccountIdChange}
           onChange={onAccountIdChange}
+          type="number"
         />
       </InlineField>
 

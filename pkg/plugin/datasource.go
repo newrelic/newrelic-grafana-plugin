@@ -117,7 +117,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 		log.DefaultLogger.Error("Failed to load plugin settings for health check", "error", err)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("Failed to load plugin settings for health check: %s", err.Error()),
+			Message: fmt.Sprintf(" %s", err.Error()),
 		}, nil
 	}
 
