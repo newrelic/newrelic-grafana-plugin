@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/newrelic/newrelic-client-go/newrelic"
-	"github.com/newrelic/newrelic-client-go/pkg/nrdb"
+	"github.com/newrelic/newrelic-client-go/v2/newrelic"
+	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 )
 
 // NRQLExecutionError represents an error during NRQL query execution.

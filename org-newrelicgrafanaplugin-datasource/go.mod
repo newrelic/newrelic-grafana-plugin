@@ -4,19 +4,22 @@ go 1.24.1
 
 toolchain go1.24.3
 
-require github.com/grafana/grafana-plugin-sdk-go v0.277.1
+require (
+	github.com/grafana/grafana-plugin-sdk-go v0.277.1
+	github.com/newrelic/newrelic-client-go/v2 v2.61.2
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
-	github.com/hashicorp/go-retryablehttp v0.7.0 // indirect
-	github.com/imdario/mergo v0.3.12 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
-	github.com/valyala/fastjson v1.6.3 // indirect
+	github.com/valyala/fastjson v1.6.4 // indirect
 )
 
 require (
@@ -29,7 +32,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20250429231605-6ed5b53462d4 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/elazarl/goproxy v1.7.2 // indirect
-	github.com/fatih/color v1.15.0 // indirect
+	github.com/fatih/color v1.16.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -64,7 +67,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/newrelic/newrelic-client-go v1.1.0
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/oklog/run v1.0.0 // indirect
