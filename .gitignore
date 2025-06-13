@@ -44,3 +44,4 @@ ci/
 .idea
 
 .eslintcache
+dist/go_plugin_build_manifest

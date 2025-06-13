@@ -9,11 +9,11 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
-	"github.com/org/newrelic-grafana-plugin/pkg/connection"
-	"github.com/org/newrelic-grafana-plugin/pkg/dataformatter"
-	"github.com/org/newrelic-grafana-plugin/pkg/models"
-	"github.com/org/newrelic-grafana-plugin/pkg/nrql"
-	"github.com/org/newrelic-grafana-plugin/pkg/util"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/connection"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/dataformatter"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/nrql"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/util"
 )
 
 var (

@@ -1,4 +1,4 @@
-module github.com/org/newrelic-grafana-plugin
+module source.datanerd.us/after/newrelic-grafana-plugin
 
 go 1.24.1
 

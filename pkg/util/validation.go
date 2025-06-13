@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
-	"github.com/org/newrelic-grafana-plugin/pkg/models"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
 )
 
 // ValidatePluginSettings checks the essential settings for the plugin.

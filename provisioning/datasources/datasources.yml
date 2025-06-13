@@ -2,7 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: 'newrelic-grafana-plugin'
-    type: 'org-newrelicgrafanaplugin-datasource'
+    type: 'newrelic-grafana-plugin'
     access: proxy
     isDefault: false
     orgId: 1
