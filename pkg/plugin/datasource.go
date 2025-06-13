@@ -100,10 +100,11 @@ func (d *Datasource) handleQuery(ctx context.Context, nrClient *newrelic.NewReli
 		return resp
 	}
 
-	if dataformatter.IsCountQuery(results) {
-		return dataformatter.FormatCountQueryResults(results)
-	}
-	return dataformatter.FormatRegularQueryResults(results, query)
+	// if dataformatter.IsCountQuery(results) {
+	// 	return dataformatter.FormatCountQueryResults(results)
+	// }
+	// return dataformatter.FormatRegularQueryResults(results, query)
+	return dataformatter.FormatQueryResults(results, query)
 
 }
 
