@@ -9,11 +9,11 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/connection"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/client"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/dataformatter"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
 	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/nrql"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/util"
+	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/validator"
 )
 
 var (
@@ -50,12 +50,12 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
 	}
 
-	if err := util.ValidatePluginSettings(config); err != nil {
+	if err := validator.ValidatePluginSettings(config); err != nil {
 		log.DefaultLogger.Error("Invalid plugin configuration", "error", err)
 		return nil, fmt.Errorf("invalid plugin configuration: %w", err)
 	}
 
-	nrClient, err := connection.GetClient(config.Secrets.ApiKey, &connection.DefaultNewRelicClientFactory{})
+	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
 	if err != nil {
 		log.DefaultLogger.Error("Failed to create New Relic client", "error", err)
 		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
@@ -123,7 +123,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 
 	// Step 2: Attempt to create a New Relic client using the API key from settings
 	// This will catch cases where the API key is missing or invalid format.
-	nrClient, err := connection.GetClient(config.Secrets.ApiKey, &connection.DefaultNewRelicClientFactory{})
+	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
 	if err != nil {
 		log.DefaultLogger.Error("Failed to create New Relic client during health check", "error", err)
 		return &backend.CheckHealthResult{
@@ -133,12 +133,12 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	}
 
 	// Step 3: Delegate the comprehensive health check (including API call)
-	// to the util package, passing the client and context.
-	healthResult, checkErr := util.CheckHealth(ctx, config, nrClient)
+	// to the validator package, passing the client and context.
+	healthResult, checkErr := validator.CheckHealth(ctx, config, nrClient)
 	if checkErr != nil {
-		// This `checkErr` should ideally be nil if util.CheckHealth only returns `*backend.CheckHealthResult`
+		// This `checkErr` should ideally be nil if validator.CheckHealth only returns `*backend.CheckHealthResult`
 		// and not a Go error, but kept for robustness.
-		log.DefaultLogger.Error("Unexpected error during health check utility call", "error", checkErr)
+		log.DefaultLogger.Error("Unexpected error during health check validator call", "error", checkErr)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
 			Message: fmt.Sprintf("Unexpected error during health check: %s", checkErr.Error()),
