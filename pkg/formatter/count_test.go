@@ -38,21 +38,20 @@ func TestFormatSimpleCountQuery(t *testing.T) {
 			query: query,
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 2)
-				tableFrame := resp.Frames[0]
-				assert.Equal(t, "count", tableFrame.Name)
-				assert.Equal(t, data.VisTypeTable, tableFrame.Meta.PreferredVisualization)
-				require.Len(t, tableFrame.Fields, 1)
-				assert.Equal(t, "count", tableFrame.Fields[0].Name)
-				assert.Equal(t, 42.0, tableFrame.Fields[0].At(0))
 
-				timeSeriesFrame := resp.Frames[1]
-				assert.Equal(t, constant.CountTimeSeriesFrameName, timeSeriesFrame.Name)
-				assert.Equal(t, data.VisTypeGraph, timeSeriesFrame.Meta.PreferredVisualization)
-				require.Len(t, timeSeriesFrame.Fields, 2)
-				assert.Equal(t, "time", timeSeriesFrame.Fields[0].Name)
-				assert.Equal(t, "count", timeSeriesFrame.Fields[1].Name)
-				assert.Equal(t, 2, timeSeriesFrame.Fields[0].Len())
-				assert.Equal(t, 2, timeSeriesFrame.Fields[1].Len())
+				// First frame should be table format
+				assert.Equal(t, "count", resp.Frames[0].Name)
+				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
+				require.Len(t, resp.Frames[0].Fields, 1)
+				assert.Equal(t, "count", resp.Frames[0].Fields[0].Name)
+				assert.Equal(t, 42.0, resp.Frames[0].Fields[0].At(0))
+
+				// Second frame should be time series format
+				assert.Equal(t, constant.CountTimeSeriesFrameName, resp.Frames[1].Name)
+				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
+				require.Len(t, resp.Frames[1].Fields, 2)
+				assert.Equal(t, "time", resp.Frames[1].Fields[0].Name)
+				assert.Equal(t, "count", resp.Frames[1].Fields[1].Name)
 			},
 		},
 		{

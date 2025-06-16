@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	nrErrors "github.com/newrelic/newrelic-client-go/v2/pkg/errors"
+	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,28 +77,29 @@ func TestValidatePluginSettings(t *testing.T) {
 	}
 }
 
-type mockNRClient struct {
+// mockNRDBExecutor implements the nrdbiface.NRDBQueryExecutor interface for testing
+type mockNRDBExecutor struct {
 	queryErr error
+	results  *nrdb.NRDBResultContainer
 }
 
-func (m *mockNRClient) Nrdb() *newrelic.Nrdb {
-	return &newrelic.Nrdb{}
-}
-
-func (m *mockNRClient) QueryWithContext(ctx context.Context, accountID int, query string) (*newrelic.NrdbResult, error) {
+func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
-	return &newrelic.NrdbResult{}, nil
+	if m.results == nil {
+		return &nrdb.NRDBResultContainer{}, nil
+	}
+	return m.results, nil
 }
 
 func TestCheckHealth(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  *models.PluginSettings
-		client  *mockNRClient
-		want    *backend.CheckHealthResult
-		wantErr bool
+		name     string
+		config   *models.PluginSettings
+		executor nrdbiface.NRDBQueryExecutor
+		want     *backend.CheckHealthResult
+		wantErr  bool
 	}{
 		{
 			name: "successful health check",
@@ -107,7 +109,7 @@ func TestCheckHealth(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRClient{},
+			executor: &mockNRDBExecutor{},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusOk,
 				Message: "Successfully connected to New Relic API.",
@@ -122,7 +124,7 @@ func TestCheckHealth(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRClient{
+			executor: &mockNRDBExecutor{
 				queryErr: &nrErrors.UnauthorizedError{},
 			},
 			want: &backend.CheckHealthResult{
@@ -139,7 +141,7 @@ func TestCheckHealth(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRClient{
+			executor: &mockNRDBExecutor{
 				queryErr: errors.New("connection error"),
 			},
 			want: &backend.CheckHealthResult{
@@ -149,17 +151,17 @@ func TestCheckHealth(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "nil client",
+			name: "nil executor",
 			config: &models.PluginSettings{
 				Secrets: &models.SecretPluginSettings{
 					ApiKey:    "test-key",
 					AccountId: 123456,
 				},
 			},
-			client: nil,
+			executor: nil,
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "New Relic client is not initialized for health check.",
+				Message: "NRDB query executor is not initialized for health check.",
 			},
 			wantErr: false,
 		},
@@ -167,7 +169,7 @@ func TestCheckHealth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CheckHealth(context.Background(), tt.config, tt.client)
+			got, err := CheckHealth(context.Background(), tt.config, tt.executor)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

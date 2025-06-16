@@ -6,7 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
+
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 )
 
@@ -30,19 +31,19 @@ func (e *ExecutionError) Unwrap() error {
 
 // Executor handles the execution of NRQL queries against New Relic.
 type Executor struct {
-	client *newrelic.NewRelic
+	executor nrdbiface.NRDBQueryExecutor
 }
 
-// NewExecutor creates a new query executor with the given New Relic client.
-func NewExecutor(client *newrelic.NewRelic) *Executor {
-	return &Executor{client: client}
+// NewExecutor creates a new query executor with the given NRDB query executor.
+func NewExecutor(executor nrdbiface.NRDBQueryExecutor) *Executor {
+	return &Executor{executor: executor}
 }
 
 // Execute runs an NRQL query against New Relic and returns the results.
 // It validates the input parameters and handles any errors that occur during execution.
 func (e *Executor) Execute(ctx context.Context, accountID int, query string) (*nrdb.NRDBResultContainer, error) {
-	if e.client == nil {
-		return nil, &ExecutionError{Query: query, Msg: "New Relic client is nil, cannot execute query"}
+	if e.executor == nil {
+		return nil, &ExecutionError{Query: query, Msg: "NRDB query executor is nil, cannot execute query"}
 	}
 	if query == "" {
 		return nil, &ExecutionError{Query: query, Msg: "NRQL query text cannot be empty"}
@@ -52,9 +53,9 @@ func (e *Executor) Execute(ctx context.Context, accountID int, query string) (*n
 	}
 
 	nrql := nrdb.NRQL(query)
-	results, err := e.client.Nrdb.QueryWithContext(ctx, accountID, nrql)
+	results, err := e.executor.QueryWithContext(ctx, accountID, nrql)
 	if err != nil {
 		return nil, &ExecutionError{Query: query, Msg: "error from New Relic API", Err: err}
 	}
 	return results, nil
-} 
+}

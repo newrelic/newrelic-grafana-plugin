@@ -16,6 +16,11 @@ import (
 func formatStandardQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 
+	// Check for empty results
+	if len(results.Results) == 0 {
+		return resp
+	}
+
 	// Create a new frame
 	frame := data.NewFrame(constant.StandardResponseFrameName)
 

@@ -6,23 +6,30 @@ import (
 	"testing"
 
 	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 	"github.com/stretchr/testify/assert"
 )
 
-// mockNRDBClient embeds nrdb.Nrdb and overrides QueryWithContext
-type mockNRDBClient struct {
-	nrdb.Nrdb
+// mockNRDBExecutor implements the nrdbiface.NRDBQueryExecutor interface for testing
+type mockNRDBExecutor struct {
 	queryErr error
 	results  *nrdb.NRDBResultContainer
 }
 
-func (m *mockNRDBClient) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
+func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
+	}
+	if m.results == nil {
+		// Return a default successful result
+		return &nrdb.NRDBResultContainer{
+			Results: []nrdb.NRDBResult{
+				{"count": 42.0},
+			},
+		}, nil
 	}
 	return m.results, nil
 }
@@ -30,7 +37,7 @@ func (m *mockNRDBClient) QueryWithContext(ctx context.Context, accountID int, qu
 func TestExecuteNRQLQuery(t *testing.T) {
 	tests := []struct {
 		name       string
-		client     *mockNRDBClient
+		executor   nrdbiface.NRDBQueryExecutor
 		accountID  int
 		query      string
 		wantErr    bool
@@ -38,22 +45,22 @@ func TestExecuteNRQLQuery(t *testing.T) {
 	}{
 		{
 			name:      "successful query",
-			client:    &mockNRDBClient{results: &nrdb.NRDBResultContainer{}},
+			executor:  &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}},
 			accountID: 123456,
 			query:     "SELECT count(*) FROM Transaction",
 			wantErr:   false,
 		},
 		{
-			name:       "nil client",
-			client:     nil,
+			name:       "nil executor",
+			executor:   nil,
 			accountID:  123456,
 			query:      "SELECT count(*) FROM Transaction",
 			wantErr:    true,
-			errMessage: "New Relic client is nil, cannot execute query",
+			errMessage: "NRDB query executor is nil, cannot execute query",
 		},
 		{
 			name:       "empty query",
-			client:     &mockNRDBClient{},
+			executor:   &mockNRDBExecutor{},
 			accountID:  123456,
 			query:      "",
 			wantErr:    true,
@@ -61,7 +68,7 @@ func TestExecuteNRQLQuery(t *testing.T) {
 		},
 		{
 			name:       "invalid account ID",
-			client:     &mockNRDBClient{},
+			executor:   &mockNRDBExecutor{},
 			accountID:  0,
 			query:      "SELECT count(*) FROM Transaction",
 			wantErr:    true,
@@ -69,7 +76,7 @@ func TestExecuteNRQLQuery(t *testing.T) {
 		},
 		{
 			name:       "query error",
-			client:     &mockNRDBClient{queryErr: errors.New("API error")},
+			executor:   &mockNRDBExecutor{queryErr: errors.New("API error")},
 			accountID:  123456,
 			query:      "SELECT count(*) FROM Transaction",
 			wantErr:    true,
@@ -79,13 +86,7 @@ func TestExecuteNRQLQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var client *newrelic.NewRelic
-			if tt.client != nil {
-				client = &newrelic.NewRelic{
-					Nrdb: tt.client,
-				}
-			}
-			results, err := ExecuteNRQLQuery(context.Background(), client, tt.accountID, tt.query)
+			results, err := ExecuteNRQLQuery(context.Background(), tt.executor, tt.accountID, tt.query)
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errMessage != "" {
@@ -100,12 +101,12 @@ func TestExecuteNRQLQuery(t *testing.T) {
 	}
 }
 
-func TestHandleQuery(t *testing.T) {
+func TestHandleQuery_QueryHandler(t *testing.T) {
 	tests := []struct {
 		name       string
 		queryJSON  string
 		config     *models.PluginSettings
-		client     *mockNRDBClient
+		executor   *mockNRDBExecutor
 		wantErr    bool
 		errMessage string
 	}{
@@ -119,7 +120,7 @@ func TestHandleQuery(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRDBClient{
+			executor: &mockNRDBExecutor{
 				results: &nrdb.NRDBResultContainer{},
 			},
 			wantErr: false,
@@ -135,7 +136,7 @@ func TestHandleQuery(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRDBClient{
+			executor: &mockNRDBExecutor{
 				results: &nrdb.NRDBResultContainer{},
 			},
 			wantErr: false,
@@ -151,8 +152,8 @@ func TestHandleQuery(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client:  &mockNRDBClient{},
-			wantErr: true,
+			executor: &mockNRDBExecutor{},
+			wantErr:  true,
 		},
 		{
 			name: "query execution error",
@@ -164,7 +165,7 @@ func TestHandleQuery(t *testing.T) {
 					AccountId: 123456,
 				},
 			},
-			client: &mockNRDBClient{
+			executor: &mockNRDBExecutor{
 				queryErr: errors.New("API error"),
 			},
 			wantErr:    true,
@@ -179,10 +180,7 @@ func TestHandleQuery(t *testing.T) {
 				JSON:  []byte(tt.queryJSON),
 			}
 
-			client := &newrelic.NewRelic{
-				Nrdb: tt.client,
-			}
-			resp := HandleQuery(context.Background(), client, tt.config, query)
+			resp := HandleQuery(context.Background(), tt.executor, tt.config, query)
 			if tt.wantErr {
 				assert.Error(t, resp.Error)
 				if tt.errMessage != "" {

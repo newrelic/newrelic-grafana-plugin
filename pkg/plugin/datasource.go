@@ -9,6 +9,7 @@ import (
 	"newrelic-grafana-plugin/pkg/client"
 	"newrelic-grafana-plugin/pkg/handler"
 	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
 	"newrelic-grafana-plugin/pkg/validator"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -36,7 +37,7 @@ type Datasource struct{}
 // Returns:
 //   - instancemgmt.Instance: The new datasource instance
 //   - error: Any error that occurred during creation
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
 
@@ -57,29 +58,49 @@ func (d *Datasource) Dispose() {
 //   - *backend.QueryDataResponse: The response containing results for all queries
 //   - error: Any error that occurred during query processing
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	// create response struct
+	logger := log.DefaultLogger.FromContext(ctx)
 	response := backend.NewQueryDataResponse()
 
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
-		log.DefaultLogger.Error("Failed to load plugin settings", "error", err)
+		logger.Error("Failed to load plugin settings", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
 	}
 
 	if err := validator.ValidatePluginSettings(config); err != nil {
-		log.DefaultLogger.Error("Invalid plugin configuration", "error", err)
+		logger.Error("Invalid plugin configuration", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return nil, fmt.Errorf("invalid plugin configuration: %w", err)
 	}
 
 	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
 	if err != nil {
-		log.DefaultLogger.Error("Failed to create New Relic client", "error", err)
+		logger.Error("Failed to create New Relic client", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
 	}
 
+	// Create the executor wrapper for the real client
+	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb}
+
+	// Process queries concurrently using a worker pool
+	queryResults := make(chan struct {
+		refID string
+		res   backend.DataResponse
+	}, len(req.Queries))
+
 	for _, q := range req.Queries {
-		res := handler.HandleQuery(ctx, nrClient, config, q)
-		response.Responses[q.RefID] = *res
+		go func(query backend.DataQuery) {
+			res := handler.HandleQuery(ctx, executor, config, query)
+			queryResults <- struct {
+				refID string
+				res   backend.DataResponse
+			}{query.RefID, *res}
+		}(q)
+	}
+
+	// Collect results
+	for i := 0; i < len(req.Queries); i++ {
+		result := <-queryResults
+		response.Responses[result.refID] = result.res
 	}
 
 	return response, nil
@@ -96,39 +117,36 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 //   - *backend.CheckHealthResult: The result of the health check
 //   - error: Any error that occurred during the health check
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	// Step 1: Load plugin settings from Grafana's request
+	logger := log.DefaultLogger.FromContext(ctx)
+
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
-		log.DefaultLogger.Error("Failed to load plugin settings for health check", "error", err)
+		logger.Error("Failed to load plugin settings during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf(" %s", err.Error()),
+			Message: "Failed to load plugin configuration",
 		}, nil
 	}
 
-	// Step 2: Attempt to create a New Relic client using the API key from settings
-	// This will catch cases where the API key is missing or invalid format.
+	if err := validator.ValidatePluginSettings(config); err != nil {
+		logger.Error("Invalid plugin configuration during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: "Invalid plugin configuration: " + err.Error(),
+		}, nil
+	}
+
 	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
 	if err != nil {
-		log.DefaultLogger.Error("Failed to create New Relic client during health check", "error", err)
+		logger.Error("Failed to create New Relic client during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("API key invalid or client failed to initialize: %s", err.Error()),
+			Message: "Failed to initialize New Relic client: " + err.Error(),
 		}, nil
 	}
 
-	// Step 3: Delegate the comprehensive health check (including API call)
-	// to the validator package, passing the client and context.
-	healthResult, checkErr := validator.CheckHealth(ctx, config, nrClient)
-	if checkErr != nil {
-		// This `checkErr` should ideally be nil if validator.CheckHealth only returns `*backend.CheckHealthResult`
-		// and not a Go error, but kept for robustness.
-		log.DefaultLogger.Error("Unexpected error during health check validator call", "error", checkErr)
-		return &backend.CheckHealthResult{
-			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("Unexpected error during health check: %s", checkErr.Error()),
-		}, nil
-	}
-	log.DefaultLogger.Debug("Health check completed", "status", healthResult.Status.String(), "message", healthResult.Message)
-	return healthResult, nil
+	// Create the executor wrapper for the real client
+	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb}
+
+	return validator.CheckHealth(ctx, config, executor)
 }

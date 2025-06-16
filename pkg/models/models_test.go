@@ -14,7 +14,7 @@ func TestLoadPluginSettings_Success(t *testing.T) {
 	}`
 	secureData := map[string]string{
 		"apiKey":    "test_api_key",
-		"accountId": "12345",
+		"accountID": "12345",
 	}
 
 	settings := backend.DataSourceInstanceSettings{
@@ -72,7 +72,7 @@ func TestLoadPluginSettings_InvalidJSON(t *testing.T) {
 func TestLoadPluginSettings_MissingAPIKey(t *testing.T) {
 	jsonData := `{}`
 	secureData := map[string]string{
-		"accountId": "12345", // Missing apiKey
+		"accountID": "12345", // Missing apiKey
 	}
 
 	settings := backend.DataSourceInstanceSettings{
@@ -89,20 +89,20 @@ func TestLoadPluginSettings_MissingAPIKey(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected PluginSettingsError, got %T", err)
 	}
-	if psErr.Msg != "could not load secure plugin settings" { // Check the top-level error message
-		t.Errorf("Expected top-level error message 'could not load secure plugin settings', got '%s'", psErr.Msg)
+	if psErr.Msg != "" { // Top level error has no message, only wrapped error
+		t.Errorf("Expected top-level error message '', got '%s'", psErr.Msg)
 	}
 	// Check the unwrapped error for the specific secure setting error
 	unwrappedErr := psErr.Unwrap()
-	if unwrappedErr == nil || unwrappedErr.Error() != "API key is missing in secure settings" {
-		t.Errorf("Expected unwrapped error 'API key is missing in secure settings', got '%v'", unwrappedErr)
+	if unwrappedErr == nil || unwrappedErr.Error() != " Enter New Relic API key." {
+		t.Errorf("Expected unwrapped error ' Enter New Relic API key.', got '%v'", unwrappedErr)
 	}
 }
 
 func TestLoadPluginSettings_MissingAccountID(t *testing.T) {
 	jsonData := `{}`
 	secureData := map[string]string{
-		"apiKey": "test_api_key", // Missing accountId
+		"apiKey": "test_api_key", // Missing accountID
 	}
 
 	settings := backend.DataSourceInstanceSettings{
@@ -119,12 +119,12 @@ func TestLoadPluginSettings_MissingAccountID(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected PluginSettingsError, got %T", err)
 	}
-	if psErr.Msg != "could not load secure plugin settings" {
-		t.Errorf("Expected top-level error message 'could not load secure plugin settings', got '%s'", psErr.Msg)
+	if psErr.Msg != "" {
+		t.Errorf("Expected top-level error message '', got '%s'", psErr.Msg)
 	}
 	unwrappedErr := psErr.Unwrap()
-	if unwrappedErr == nil || unwrappedErr.Error() != "Account ID is missing in secure settings" {
-		t.Errorf("Expected unwrapped error 'Account ID is missing in secure settings', got '%v'", unwrappedErr)
+	if unwrappedErr == nil || unwrappedErr.Error() != " Enter an account ID. This must be a valid, positive number." {
+		t.Errorf("Expected unwrapped error ' Enter an account ID. This must be a valid, positive number.', got '%v'", unwrappedErr)
 	}
 }
 
@@ -132,7 +132,7 @@ func TestLoadPluginSettings_InvalidAccountID(t *testing.T) {
 	jsonData := `{}`
 	secureData := map[string]string{
 		"apiKey":    "test_api_key",
-		"accountId": "not_an_int", // Invalid account ID
+		"accountID": "not_an_int", // Invalid account ID
 	}
 
 	settings := backend.DataSourceInstanceSettings{
@@ -149,8 +149,8 @@ func TestLoadPluginSettings_InvalidAccountID(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected PluginSettingsError, got %T", err)
 	}
-	if psErr.Msg != "could not load secure plugin settings" {
-		t.Errorf("Expected top-level error message 'could not load secure plugin settings', got '%s'", psErr.Msg)
+	if psErr.Msg != "" {
+		t.Errorf("Expected top-level error message '', got '%s'", psErr.Msg)
 	}
 	unwrappedErr := psErr.Unwrap()
 	if unwrappedErr == nil {
@@ -161,8 +161,8 @@ func TestLoadPluginSettings_InvalidAccountID(t *testing.T) {
 	}
 	// Check the message of the nested PluginSettingsError
 	nestedPsErr, ok := unwrappedErr.(*PluginSettingsError)
-	if !ok || nestedPsErr.Msg != "could not convert accountId 'not_an_int' to int" {
-		t.Errorf("Expected nested error message 'could not convert accountId 'not_an_int' to int', got '%v'", unwrappedErr)
+	if !ok || nestedPsErr.Msg != "could not convert accountID 'not_an_int' to int" {
+		t.Errorf("Expected nested error message 'could not convert accountID 'not_an_int' to int', got '%v'", unwrappedErr)
 	}
 	if nestedPsErr.Unwrap() == nil {
 		t.Error("Expected nested wrapped error, but got nil")

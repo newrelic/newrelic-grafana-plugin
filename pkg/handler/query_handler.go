@@ -7,10 +7,10 @@ import (
 
 	"newrelic-grafana-plugin/pkg/dataformatter"
 	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 )
 
@@ -32,11 +32,11 @@ func (e *NRQLExecutionError) Unwrap() error {
 	return e.Err
 }
 
-// ExecuteNRQLQuery takes a New Relic client, account ID, and NRQL query string,
+// ExecuteNRQLQuery takes an NRDB query executor, account ID, and NRQL query string,
 // executes the query, and returns the results.
-func ExecuteNRQLQuery(ctx context.Context, client *newrelic.NewRelic, accountID int, nrqlQueryText string) (*nrdb.NRDBResultContainer, error) {
-	if client == nil {
-		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "New Relic client is nil, cannot execute query"}
+func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, accountID int, nrqlQueryText string) (*nrdb.NRDBResultContainer, error) {
+	if executor == nil {
+		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "NRDB query executor is nil, cannot execute query"}
 	}
 	if nrqlQueryText == "" {
 		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "NRQL query text cannot be empty"}
@@ -46,7 +46,7 @@ func ExecuteNRQLQuery(ctx context.Context, client *newrelic.NewRelic, accountID 
 	}
 
 	nrql := nrdb.NRQL(nrqlQueryText)
-	results, err := client.Nrdb.QueryWithContext(ctx, accountID, nrql)
+	results, err := executor.QueryWithContext(ctx, accountID, nrql)
 	if err != nil {
 		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "error from New Relic API", Err: err}
 	}
@@ -54,7 +54,7 @@ func ExecuteNRQLQuery(ctx context.Context, client *newrelic.NewRelic, accountID 
 }
 
 // handleQuery processes a single Grafana data query.
-func HandleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
+func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 
 	// Parse the query JSON
@@ -77,7 +77,7 @@ func HandleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *model
 		accountID = qm.AccountID
 	}
 
-	results, err := ExecuteNRQLQuery(ctx, nrClient, accountID, nrqlQueryText)
+	results, err := ExecuteNRQLQuery(ctx, executor, accountID, nrqlQueryText)
 	if err != nil {
 		resp.Error = fmt.Errorf("NRQL query execution failed: %w", err)
 		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "query", nrqlQueryText, "accountID", accountID, "error", err)
@@ -85,5 +85,4 @@ func HandleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *model
 	}
 
 	return dataformatter.FormatQueryResults(results, query)
-
 }

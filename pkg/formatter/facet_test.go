@@ -50,7 +50,7 @@ func TestFormatFacetedCountQuery(t *testing.T) {
 				require.Len(t, resp.Frames, 2)
 				tableFrame := resp.Frames[0]
 				assert.Equal(t, constant.FacetedFrameName, tableFrame.Name)
-				assert.Equal(t, data.VisTypeTable, tableFrame.Meta.PreferredVisualization)
+				assert.Equal(t, data.VisType(data.VisTypeTable), tableFrame.Meta.PreferredVisualization)
 				require.Len(t, tableFrame.Fields, 2)
 				assert.Equal(t, "service", tableFrame.Fields[0].Name)
 				assert.Equal(t, constant.CountFieldName, tableFrame.Fields[1].Name)

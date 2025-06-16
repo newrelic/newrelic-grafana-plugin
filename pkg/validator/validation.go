@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/nrdbiface"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/errors"
 )
 
@@ -31,17 +31,17 @@ func ValidatePluginSettings(settings *models.PluginSettings) error {
 	return nil
 }
 
-// CheckHealth checks the health of the New Relic connection
-func CheckHealth(ctx context.Context, settings *models.PluginSettings, client *newrelic.NewRelic) (*backend.CheckHealthResult, error) {
-	if client == nil {
+// CheckHealth checks the health of the New Relic connection using an NRDB query executor
+func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor nrdbiface.NRDBQueryExecutor) (*backend.CheckHealthResult, error) {
+	if executor == nil {
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: "New Relic client is not initialized for health check.",
+			Message: "NRDB query executor is not initialized for health check.",
 		}, nil
 	}
 
 	// Try a simple query to check connectivity
-	_, err := client.Nrdb.QueryWithContext(ctx, settings.Secrets.AccountId, "SELECT 1")
+	_, err := executor.QueryWithContext(ctx, settings.Secrets.AccountId, "SELECT 1")
 	if err != nil {
 		switch err.(type) {
 		case *errors.UnauthorizedError:

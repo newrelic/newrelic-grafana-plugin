@@ -80,7 +80,7 @@ func TestFormatQueryResults(t *testing.T) {
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 2)
 				assert.Equal(t, "count", resp.Frames[0].Name)
-				assert.Equal(t, data.VisTypeTable, resp.Frames[0].Meta.PreferredVisualization)
+				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
 				assert.Equal(t, constant.CountTimeSeriesFrameName, resp.Frames[1].Name)
 				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
 			},
@@ -106,7 +106,7 @@ func TestFormatQueryResults(t *testing.T) {
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 2)
 				assert.Equal(t, constant.FacetedFrameName, resp.Frames[0].Name)
-				assert.Equal(t, data.VisTypeTable, resp.Frames[0].Meta.PreferredVisualization)
+				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
 				assert.Equal(t, constant.FacetedTimeSeriesFrameName, resp.Frames[1].Name)
 				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
 			},
