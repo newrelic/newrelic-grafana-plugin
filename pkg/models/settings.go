@@ -1,3 +1,6 @@
+// Package models defines the data structures and types used throughout
+// the New Relic Grafana plugin. This includes configuration settings,
+// query models, and error types with proper JSON marshaling support.
 package models
 
 import (
@@ -23,7 +26,7 @@ func (e *PluginSettingsError) Error() string {
 		return fmt.Sprintf("%v", e.Err)
 
 	}
-	return fmt.Sprintf(" %s", e.Msg)
+	return e.Msg
 }
 
 func (e *PluginSettingsError) Unwrap() error {

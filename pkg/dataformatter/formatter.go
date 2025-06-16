@@ -1,3 +1,6 @@
+// Package dataformatter handles the conversion of New Relic API responses
+// into Grafana data frames. It supports different query types including
+// count queries, faceted queries, and standard time series data.
 package dataformatter
 
 import (

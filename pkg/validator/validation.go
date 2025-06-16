@@ -1,3 +1,6 @@
+// Package validator provides validation functions for plugin settings and health checks.
+// It ensures that configuration parameters are valid and that the New Relic API
+// connection is working properly before processing queries.
 package validator
 
 import (
@@ -56,7 +59,7 @@ func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor 
 		case *errors.UnauthorizedError:
 			return &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "An error occurred with connecting to NewRelic.Could not connect to NewRelic. This usually happens when the API key is incorrect.",
+				Message: "An error occurred with connecting to NewRelic. Could not connect to NewRelic. This usually happens when the API key is incorrect.",
 			}, nil
 		default:
 			return &backend.CheckHealthResult{

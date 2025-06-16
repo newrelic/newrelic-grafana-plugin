@@ -1,5 +1,6 @@
 // Package nrdbiface provides interfaces for New Relic Database (NRDB) query execution.
-// This package enables dependency injection and mocking for testing.
+// This package enables dependency injection and testing by abstracting the concrete
+// New Relic client implementation behind interfaces.
 package nrdbiface
 
 import (

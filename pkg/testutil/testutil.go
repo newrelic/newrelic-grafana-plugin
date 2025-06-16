@@ -1,3 +1,6 @@
+// Package testutil provides testing utilities and helper functions for the New Relic Grafana plugin.
+// It includes mock data creation, test query builders, and common testing patterns
+// to ensure consistent and reliable test setup across the codebase.
 package testutil
 
 import (

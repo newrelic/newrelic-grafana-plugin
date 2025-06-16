@@ -51,4 +51,4 @@ func NewClient(apiKey string, factory ClientFactory) (*newrelic.NewRelic, error)
 		return nil, &ClientError{Msg: "failed to initialize New Relic client", Err: err}
 	}
 	return client, nil
-} 
+}

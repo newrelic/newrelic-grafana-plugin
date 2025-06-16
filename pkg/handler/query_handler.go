@@ -1,3 +1,6 @@
+// Package handler processes incoming query requests from Grafana and executes
+// NRQL queries against the New Relic API. It handles query parsing, validation,
+// execution, and response formatting with proper error handling.
 package handler
 
 import (

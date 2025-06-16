@@ -1,3 +1,6 @@
+// Package health provides comprehensive health check functionality for the New Relic Grafana plugin.
+// It validates plugin settings, initializes clients, and performs connectivity tests
+// to ensure the datasource is properly configured and operational.
 package health
 
 import (

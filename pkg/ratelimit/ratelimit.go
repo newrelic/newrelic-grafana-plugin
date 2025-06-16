@@ -1,3 +1,6 @@
+// Package ratelimit implements a token bucket rate limiter for controlling
+// the rate of requests to the New Relic API. It provides thread-safe rate limiting
+// with context support for graceful cancellation and timeout handling.
 package ratelimit
 
 import (

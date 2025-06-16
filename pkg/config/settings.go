@@ -32,7 +32,7 @@ func (e *SettingsError) Unwrap() error {
 
 // Settings holds the configuration settings for the New Relic data source.
 type Settings struct {
-	Path    string                `json:"path"`
+	Path    string          `json:"path"`
 	Secrets *SecretSettings `json:"-"`
 }
 
@@ -81,4 +81,4 @@ func loadSecretSettings(source map[string]string) (*SecretSettings, error) {
 		ApiKey:    apiKey,
 		AccountId: accountId,
 	}, nil
-} 
+}

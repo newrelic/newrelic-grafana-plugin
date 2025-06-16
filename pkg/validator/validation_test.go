@@ -129,7 +129,7 @@ func TestCheckHealth(t *testing.T) {
 			},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "An error occurred with connecting to NewRelic.Could not connect to NewRelic. This usually happens when the API key is incorrect.",
+				Message: "An error occurred with connecting to NewRelic. Could not connect to NewRelic. This usually happens when the API key is incorrect.",
 			},
 			wantErr: false,
 		},

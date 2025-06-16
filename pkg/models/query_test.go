@@ -94,8 +94,8 @@ func TestLoadPluginSettings_MissingAPIKey(t *testing.T) {
 	}
 	// Check the unwrapped error for the specific secure setting error
 	unwrappedErr := psErr.Unwrap()
-	if unwrappedErr == nil || unwrappedErr.Error() != " Enter New Relic API key." {
-		t.Errorf("Expected unwrapped error ' Enter New Relic API key.', got '%v'", unwrappedErr)
+	if unwrappedErr == nil || unwrappedErr.Error() != "Enter New Relic API key." {
+		t.Errorf("Expected unwrapped error 'Enter New Relic API key.', got '%v'", unwrappedErr)
 	}
 }
 
@@ -123,8 +123,8 @@ func TestLoadPluginSettings_MissingAccountID(t *testing.T) {
 		t.Errorf("Expected top-level error message '', got '%s'", psErr.Msg)
 	}
 	unwrappedErr := psErr.Unwrap()
-	if unwrappedErr == nil || unwrappedErr.Error() != " Enter an account ID. This must be a valid, positive number." {
-		t.Errorf("Expected unwrapped error ' Enter an account ID. This must be a valid, positive number.', got '%v'", unwrappedErr)
+	if unwrappedErr == nil || unwrappedErr.Error() != "Enter an account ID. This must be a valid, positive number." {
+		t.Errorf("Expected unwrapped error 'Enter an account ID. This must be a valid, positive number.', got '%v'", unwrappedErr)
 	}
 }
 

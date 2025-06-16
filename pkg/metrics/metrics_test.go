@@ -9,7 +9,7 @@ import (
 
 func TestMetrics_RecordQuery(t *testing.T) {
 	// Reset metrics before the entire test
-	metrics = &Metrics{}
+	ResetMetrics()
 
 	// First test - successful query
 	t.Run("successful query", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestMetrics_ConcurrentQueries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset metrics before each test
-			metrics = &Metrics{}
+			ResetMetrics()
 
 			tt.ops()
 
@@ -83,7 +83,7 @@ func TestMetrics_ConcurrentQueries(t *testing.T) {
 
 func TestMetrics_Concurrency(t *testing.T) {
 	// Reset metrics before test
-	metrics = &Metrics{}
+	ResetMetrics()
 
 	// Launch multiple goroutines to test concurrent access
 	const goroutines = 100
