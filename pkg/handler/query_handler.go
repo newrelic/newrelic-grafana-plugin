@@ -53,7 +53,7 @@ func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor,
 	return results, nil
 }
 
-// handleQuery processes a single Grafana data query.
+// HandleQuery processes a single Grafana data query using our interface-based approach.
 func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 

@@ -8,6 +8,7 @@ import (
 
 	"newrelic-grafana-plugin/pkg/client"
 	"newrelic-grafana-plugin/pkg/handler"
+	"newrelic-grafana-plugin/pkg/health"
 	"newrelic-grafana-plugin/pkg/models"
 	"newrelic-grafana-plugin/pkg/nrdbiface"
 	"newrelic-grafana-plugin/pkg/validator"
@@ -72,7 +73,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		return nil, fmt.Errorf("invalid plugin configuration: %w", err)
 	}
 
-	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
+	nrClient, err := client.CreateNewRelicClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
 	if err != nil {
 		logger.Error("Failed to create New Relic client", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
@@ -117,36 +118,22 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 //   - *backend.CheckHealthResult: The result of the health check
 //   - error: Any error that occurred during the health check
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
+	log.DefaultLogger.Debug("Datasource.CheckHealth: Initiating health check routing")
 
-	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
+	// Delegate the comprehensive health check to the 'health' package.
+	// We pass the context and the raw DataSourceInstanceSettings.
+	healthResult, err := health.ExecuteHealthCheck(ctx, *req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
-		logger.Error("Failed to load plugin settings during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
+		// Log the unexpected error from the health package for debugging purposes.
+		log.DefaultLogger.Error("Datasource.CheckHealth: Health check failed internally", "error", err)
+		// Return a generic error to Grafana UI if the health.ExecuteHealthCheck
+		// returns a Go error instead of a *backend.CheckHealthResult with an error status.
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: "Failed to load plugin configuration",
+			Message: fmt.Sprintf("Health check encountered an internal error: %s", err.Error()),
 		}, nil
 	}
 
-	if err := validator.ValidatePluginSettings(config); err != nil {
-		logger.Error("Invalid plugin configuration during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
-		return &backend.CheckHealthResult{
-			Status:  backend.HealthStatusError,
-			Message: "Invalid plugin configuration: " + err.Error(),
-		}, nil
-	}
-
-	nrClient, err := client.GetClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
-	if err != nil {
-		logger.Error("Failed to create New Relic client during health check", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
-		return &backend.CheckHealthResult{
-			Status:  backend.HealthStatusError,
-			Message: "Failed to initialize New Relic client: " + err.Error(),
-		}, nil
-	}
-
-	// Create the executor wrapper for the real client
-	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb}
-
-	return validator.CheckHealth(ctx, config, executor)
+	// Return the result received from the health package directly to Grafana.
+	return healthResult, nil
 }

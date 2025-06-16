@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"fmt"
 
 	"newrelic-grafana-plugin/pkg/models"
 	"newrelic-grafana-plugin/pkg/nrdbiface"
@@ -37,6 +38,14 @@ func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor 
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
 			Message: "NRDB query executor is not initialized for health check.",
+		}, nil
+	}
+
+	// First, perform basic settings validation
+	if err := ValidatePluginSettings(settings); err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Plugin configuration validation failed: %s", err.Error()),
 		}, nil
 	}
 
