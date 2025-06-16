@@ -29,28 +29,51 @@ describe('timeUtils', () => {
   });
 
   describe('buildNRQLWithTimeIntegration', () => {
-    it('should add Grafana time variables to query without time clauses', () => {
-      const baseQuery = 'SELECT count(*) FROM Transaction';
-      const result = buildNRQLWithTimeIntegration(baseQuery, true);
-      
-      expect(result).toContain('$__from');
-      expect(result).toContain('$__to');
-    });
-
-    it('should replace existing SINCE clauses with Grafana variables', () => {
+    it('should add Grafana time variables to query without WHERE clause', () => {
       const baseQuery = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
       const result = buildNRQLWithTimeIntegration(baseQuery, true);
       
-      expect(result).toContain('$__from');
-      expect(result).toContain('$__to');
-      expect(result).not.toContain('SINCE 1 hour ago');
+      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to');
     });
 
-    it('should return original query when not using Grafana time', () => {
+    it('should add Grafana time variables to existing WHERE clause', () => {
+      const baseQuery = 'SELECT count(*) FROM Transaction WHERE appName = "test" SINCE 1 hour ago';
+      const result = buildNRQLWithTimeIntegration(baseQuery, true);
+      
+      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to AND appName = "test"');
+    });
+
+    it('should not modify query that already has Grafana time variables', () => {
+      const baseQuery = 'SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to';
+      const result = buildNRQLWithTimeIntegration(baseQuery, true);
+      
+      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to');
+    });
+
+    it('should handle complex queries with FACET and LIMIT', () => {
+      const baseQuery = 'SELECT average(duration) FROM Transaction WHERE appName = "test" FACET host SINCE 1 hour ago LIMIT 100';
+      const result = buildNRQLWithTimeIntegration(baseQuery, true);
+      
+      expect(result).toBe('SELECT average(duration) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to AND appName = "test" FACET host LIMIT 100');
+    });
+
+    it('should remove SINCE and UNTIL clauses when adding Grafana time', () => {
+      const baseQuery = 'SELECT count(*) FROM Transaction SINCE 2 hours ago UNTIL 1 hour ago';
+      const result = buildNRQLWithTimeIntegration(baseQuery, true);
+      
+      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to');
+    });
+
+    it('should return query unchanged when useGrafanaTime is false', () => {
       const baseQuery = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
       const result = buildNRQLWithTimeIntegration(baseQuery, false);
       
-      expect(result).toBe(baseQuery);
+      expect(result).toBe('SELECT count(*) FROM Transaction SINCE 1 hour ago');
+    });
+
+    it('should handle empty query gracefully', () => {
+      const result = buildNRQLWithTimeIntegration('', true);
+      expect(result).toBe('');
     });
   });
 

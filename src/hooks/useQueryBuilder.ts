@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 interface UseQueryBuilderProps {
   initialQuery: string;
   onChange: (query: string) => void;
+  useGrafanaTime?: boolean;
 }
 
 interface UseQueryBuilderResult {
@@ -23,7 +24,7 @@ function parseNRQLQuery(query: string): QueryComponents {
   try {
     const components: QueryComponents = { ...DEFAULT_QUERY_COMPONENTS };
     
-    // Parse SELECT clause
+    // Parse SELECT clause with improved regex
     const selectMatch = query.match(/SELECT\s+(.+?)\s+FROM/i);
     if (selectMatch && selectMatch[1]) {
       const selectClause = selectMatch[1].trim();
@@ -35,10 +36,33 @@ function parseNRQLQuery(query: string): QueryComponents {
         components.aggregation = 'count';
         components.field = '';
       } else {
-        const funcMatch = selectClause.match(/(\w+)\(([^)]+)\)/);
+        // Enhanced regex to handle various function patterns
+        const funcMatch = selectClause.match(/(\w+)\s*\(\s*([^)]*)\s*\)/);
         if (funcMatch) {
-          components.aggregation = funcMatch[1];
-          components.field = funcMatch[2].trim();
+          const funcName = funcMatch[1].toLowerCase();
+          const funcParam = funcMatch[2].trim();
+          
+          // Handle different aggregation functions
+          if (funcName === 'count') {
+            components.aggregation = 'count';
+            components.field = funcParam === '*' ? '' : funcParam;
+          } else if (['sum', 'average', 'avg', 'min', 'max', 'latest', 'earliest', 'uniquecount', 'stddev', 'rate', 'median'].includes(funcName)) {
+            components.aggregation = funcName === 'avg' ? 'average' : funcName === 'uniquecount' ? 'uniqueCount' : funcName;
+            components.field = funcParam === '*' ? '' : funcParam;
+          } else if (funcName === 'percentile') {
+            components.aggregation = 'percentile';
+            // Extract field from percentile(field, percentage)
+            const percentileMatch = funcParam.match(/^([^,]+)/);
+            components.field = percentileMatch ? percentileMatch[1].trim() : funcParam;
+          } else {
+            // Unknown function - keep as is but mark for validation
+            components.aggregation = funcName;
+            components.field = funcParam === '*' ? '' : funcParam;
+          }
+        } else {
+          // If no function pattern, treat as raw field selection
+          components.aggregation = 'raw';
+          components.field = selectClause;
         }
       }
     }
@@ -49,10 +73,28 @@ function parseNRQLQuery(query: string): QueryComponents {
       components.from = fromMatch[1];
     }
 
-    // Parse WHERE clause
+    // Parse WHERE clause - improved to handle complex conditions and remove Grafana variables
     const whereMatch = query.match(/WHERE\s+(.+?)(?:\s+FACET|\s+SINCE|\s+UNTIL|\s+TIMESERIES|\s+LIMIT|$)/i);
     if (whereMatch && whereMatch[1]) {
-      components.where = whereMatch[1].trim();
+      let whereClause = whereMatch[1].trim();
+      
+      // Remove all variations of Grafana time variables from WHERE clause
+      const grafanaTimePatterns = [
+        /\s*AND\s*timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
+        /timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to\s*AND\s*/gi,
+        /timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
+        /\s*timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
+      ];
+      
+      grafanaTimePatterns.forEach(pattern => {
+        whereClause = whereClause.replace(pattern, '');
+      });
+      
+      // Clean up any remaining AND/OR at the beginning or end
+      whereClause = whereClause.replace(/^\s*(AND|OR)\s*/i, '').replace(/\s*(AND|OR)\s*$/i, '');
+      whereClause = whereClause.trim();
+      
+      components.where = whereClause;
     }
 
     // Parse FACET clause
@@ -93,7 +135,7 @@ function parseNRQLQuery(query: string): QueryComponents {
 }
 
 // Build NRQL query from components (standalone function)
-function buildNRQLQuery(components: QueryComponents): string {
+function buildNRQLQuery(components: QueryComponents, useGrafanaTime = false): string {
   if (!components || !components.aggregation || !components.from) {
     return 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
   }
@@ -114,20 +156,41 @@ function buildNRQLQuery(components: QueryComponents): string {
 
   let query = `SELECT ${selectClause} FROM ${components.from}`;
   
-  if (components.where && components.where.trim()) {
-    query += ` WHERE ${components.where}`;
+  // Handle WHERE clause carefully to avoid duplicates
+  const userWhere = components.where && components.where.trim();
+  const needsGrafanaTime = useGrafanaTime;
+  
+  if (userWhere || needsGrafanaTime) {
+    const conditions = [];
+    
+    // Add user WHERE conditions (excluding any existing Grafana time conditions)
+    if (userWhere) {
+      conditions.push(userWhere);
+    }
+    
+    // Add Grafana time conditions only if needed and not already present
+    if (needsGrafanaTime) {
+      conditions.push('timestamp >= $__from AND timestamp <= $__to');
+    }
+    
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
   }
   
   if (components.facet && components.facet.length > 0) {
     query += ` FACET ${components.facet.join(', ')}`;
   }
   
-  if (components.since && components.since.trim()) {
-    query += ` SINCE ${components.since} ago`;
-  }
-  
-  if (components.until && components.until.trim()) {
-    query += ` UNTIL ${components.until} ago`;
+  // Only add SINCE/UNTIL if not using Grafana time
+  if (!needsGrafanaTime) {
+    if (components.since && components.since.trim()) {
+      query += ` SINCE ${components.since} ago`;
+    }
+    
+    if (components.until && components.until.trim()) {
+      query += ` UNTIL ${components.until} ago`;
+    }
   }
   
   if (components.timeseries) {
@@ -141,7 +204,7 @@ function buildNRQLQuery(components: QueryComponents): string {
   return query;
 }
 
-export function useQueryBuilder({ initialQuery, onChange }: UseQueryBuilderProps): UseQueryBuilderResult {
+export function useQueryBuilder({ initialQuery, onChange, useGrafanaTime = false }: UseQueryBuilderProps): UseQueryBuilderResult {
   // Start with defaults that don't include limit unless parsing a real query
   const [queryComponents, setQueryComponents] = useState<QueryComponents>(() => {
     if (initialQuery) {
@@ -179,19 +242,30 @@ export function useQueryBuilder({ initialQuery, onChange }: UseQueryBuilderProps
     }
   }, [initialQuery]);
 
+  // Also watch for useGrafanaTime changes to rebuild the query properly
+  useEffect(() => {
+    if (!isUpdatingRef.current && queryComponents.aggregation) {
+      const newQuery = buildNRQLQuery(queryComponents, useGrafanaTime);
+      if (newQuery !== lastQueryRef.current) {
+        lastQueryRef.current = newQuery;
+        onChange(newQuery);
+      }
+    }
+  }, [useGrafanaTime, onChange, queryComponents]);
+
   // Update components
   const updateComponents = useCallback((update: Partial<QueryComponents>) => {
     setQueryComponents(prev => {
       const newComponents = { ...prev, ...update };
-      // Trigger query rebuild immediately
-      const newQuery = buildNRQLQuery(newComponents);
+      // Trigger query rebuild immediately with Grafana time awareness
+      const newQuery = buildNRQLQuery(newComponents, useGrafanaTime);
       if (newQuery !== lastQueryRef.current) {
         lastQueryRef.current = newQuery;
         onChange(newQuery);
       }
       return newComponents;
     });
-  }, [onChange]);
+  }, [onChange, useGrafanaTime]);
 
   return {
     queryComponents,

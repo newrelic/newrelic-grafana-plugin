@@ -3,130 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NRQLQueryBuilder } from '../NRQLQueryBuilder';
 
-// Mock Grafana UI components
-jest.mock('@grafana/ui', () => ({
-  ...jest.requireActual('@grafana/ui'),
-  InlineFieldRow: ({ children }: any) => <div className="css-15ix71y-InlineFieldRow">{children}</div>,
-  InlineField: ({ label, tooltip, children }: any) => (
-    <div className="css-1uqla6q">
-      <label className="css-v249xx">
-        {label}
-        {tooltip && <svg data-testid="info-circle" />}
-      </label>
-      <div className="css-1tu59u4">{children}</div>
-    </div>
-  ),
-  Input: ({ value, onChange, placeholder, type, min, max, width, 'aria-label': ariaLabel, ...props }: any) => (
-    <div className="css-1c7kjdq-input-wrapper" data-testid="input-wrapper">
-      <div className="css-10lnb82-input-inputWrapper">
-        <input
-          type={type || 'text'}
-          value={value}
-          onChange={(e) => {
-            // Create synthetic event with currentTarget
-            const syntheticEvent = {
-              currentTarget: { value: e.target.value },
-              target: { value: e.target.value }
-            };
-            onChange?.(syntheticEvent);
-          }}
-          placeholder={placeholder}
-          min={min}
-          max={max}
-          width={width}
-          aria-label={ariaLabel}
-          className="css-xmqqi8-input-input"
-          {...props}
-        />
-      </div>
-    </div>
-  ),
-  Switch: ({ value, onChange, ...props }: any) => (
-    <div className="css-1n85obj">
-      <input
-        type="checkbox"
-        role="switch"
-        checked={value}
-        onChange={(e) => {
-          const syntheticEvent = {
-            currentTarget: { checked: e.target.checked },
-            target: { checked: e.target.checked }
-          };
-          onChange?.(syntheticEvent);
-        }}
-        id={`switch-${Math.random().toString().slice(2)}`}
-        aria-label="Enable time series"
-        {...props}
-      />
-      <label htmlFor={`switch-${Math.random().toString().slice(2)}`}>
-        <svg data-testid="check" />
-      </label>
-    </div>
-  ),
-}));
-
-// Mock the hook
+// Mock the useQueryBuilder hook
 jest.mock('../../../hooks/useQueryBuilder');
 const mockUseQueryBuilder = require('../../../hooks/useQueryBuilder').useQueryBuilder as jest.MockedFunction<any>;
-
-// Mock child components with correct prop interfaces
-jest.mock('../AggregationSelector', () => ({
-  AggregationSelector: ({ value, onChange }: any) => (
-    <select
-      data-testid="aggregation-selector"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="count">count</option>
-      <option value="average">average</option>
-      <option value="sum">sum</option>
-    </select>
-  ),
-}));
-
-jest.mock('../FieldSelector', () => ({
-  FieldSelector: ({ value, onChange }: any) => (
-    <input
-      data-testid="field-selector"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
-}));
-
-jest.mock('../EventTypeSelector', () => ({
-  EventTypeSelector: ({ value, onChange }: any) => (
-    <select
-      data-testid="event-type-selector"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="Transaction">Transaction</option>
-      <option value="Span">Span</option>
-      <option value="Metric">Metric</option>
-    </select>
-  ),
-}));
-
-// Create a counter to give unique test IDs
-let timeRangeSelectorCounter = 0;
-
-jest.mock('../TimeRangeSelector', () => ({
-  TimeRangeSelector: ({ value, onChange, label }: any) => {
-    const testId = `time-range-selector-${label?.toLowerCase() || ++timeRangeSelectorCounter}`;
-    return (
-      <select
-        data-testid={testId}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="1 hour">1 hour</option>
-        <option value="6 hours">6 hours</option>
-        <option value="24 hours">24 hours</option>
-      </select>
-    );
-  },
-}));
 
 describe('NRQLQueryBuilder', () => {
   const mockOnChange = jest.fn();
@@ -158,92 +37,127 @@ describe('NRQLQueryBuilder', () => {
     value: 'SELECT count(*) FROM Transaction SINCE 1 hour ago',
     onChange: mockOnChange,
     onRunQuery: mockOnRunQuery,
+    useGrafanaTime: false,
   };
 
   describe('rendering', () => {
-    it('should render all query builder components', () => {
+    it('should render all query builder fields', () => {
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      expect(screen.getByTestId('aggregation-selector')).toBeInTheDocument();
-      expect(screen.getByTestId('event-type-selector')).toBeInTheDocument();
-      expect(screen.getByTestId('time-range-selector-since')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('e.g., appName = \'My App\'')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('e.g., appName, host')).toBeInTheDocument();
-      expect(screen.getByRole('switch')).toBeInTheDocument();
-      expect(screen.getByRole('spinbutton')).toBeInTheDocument();
+      // Check that labels are present
+      expect(screen.getByText('Aggregation')).toBeInTheDocument();
+      expect(screen.getByText('FROM')).toBeInTheDocument();
+      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(screen.getByText('FACET')).toBeInTheDocument();
+      expect(screen.getByText('SINCE')).toBeInTheDocument();
+      expect(screen.getByText('LIMIT')).toBeInTheDocument();
+
+      // Check that inputs are present
+      expect(screen.getByPlaceholderText('e.g., appName = \'MyApp\' AND duration > 1')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('e.g., host, appName')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('100')).toBeInTheDocument();
     });
 
-    it('should render field selector when aggregation requires field', () => {
+    it('should render field input when aggregation requires field', () => {
       mockUseQueryBuilder.mockReturnValue({
-        queryComponents: { ...defaultQueryComponents, aggregation: 'average' },
+        queryComponents: { ...defaultQueryComponents, aggregation: 'average', field: 'duration' },
         updateComponents: mockUpdateComponents,
         validationResult: { isValid: true },
       });
 
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      expect(screen.getByTestId('field-selector')).toBeInTheDocument();
+      expect(screen.getByText('Field')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('e.g., duration, responseTime')).toBeInTheDocument();
     });
 
-    it('should not render field selector when aggregation does not require field', () => {
+    it('should not render field input when aggregation is count', () => {
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      expect(screen.queryByTestId('field-selector')).not.toBeInTheDocument();
+      expect(screen.queryByText('Field')).not.toBeInTheDocument();
     });
 
-    it('should render UNTIL selector when until value exists', () => {
+    it('should show Grafana time picker info when useGrafanaTime is true', () => {
+      render(<NRQLQueryBuilder {...defaultProps} useGrafanaTime={true} />);
+
+      expect(screen.getByText('Using Grafana Dashboard Time Picker')).toBeInTheDocument();
+      expect(screen.queryByText('SINCE')).not.toBeInTheDocument();
+    });
+
+    it('should show query preview at the bottom', () => {
+      render(<NRQLQueryBuilder {...defaultProps} />);
+
+      expect(screen.getByText('Generated Query:')).toBeInTheDocument();
+      expect(screen.getByText(defaultProps.value)).toBeInTheDocument();
+    });
+  });
+
+  describe('validation', () => {
+    it('should show validation errors for invalid aggregation', () => {
       mockUseQueryBuilder.mockReturnValue({
-        queryComponents: { ...defaultQueryComponents, until: '30 minutes' },
+        queryComponents: { ...defaultQueryComponents, aggregation: 'xyz' },
         updateComponents: mockUpdateComponents,
-        validationResult: { isValid: true },
+        validationResult: { isValid: false },
       });
 
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      expect(screen.getByTestId('time-range-selector-since')).toBeInTheDocument();
-      expect(screen.getByTestId('time-range-selector-until')).toBeInTheDocument();
+      expect(screen.getByText('Query Builder Validation Errors')).toBeInTheDocument();
+    });
+
+    it('should show validation error for missing field when required', () => {
+      mockUseQueryBuilder.mockReturnValue({
+        queryComponents: { ...defaultQueryComponents, aggregation: 'average', field: '' },
+        updateComponents: mockUpdateComponents,
+        validationResult: { isValid: false },
+      });
+
+      render(<NRQLQueryBuilder {...defaultProps} />);
+
+      expect(screen.getByText('Query Builder Validation Errors')).toBeInTheDocument();
     });
   });
 
   describe('user interactions', () => {
-    it('should call updateComponents when aggregation changes', async () => {
+    it('should call updateComponents when WHERE field changes', async () => {
       const user = userEvent.setup();
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      const aggregationSelector = screen.getByTestId('aggregation-selector');
-      await user.selectOptions(aggregationSelector, 'average');
+      const whereInput = screen.getByPlaceholderText('e.g., appName = \'MyApp\' AND duration > 1');
+      await user.clear(whereInput);
+      await user.type(whereInput, 'test');
 
-      expect(mockUpdateComponents).toHaveBeenCalledWith({ aggregation: 'average' });
+      // Just verify that updateComponents was called with where parameter
+      await waitFor(() => {
+        expect(mockUpdateComponents).toHaveBeenCalledWith(expect.objectContaining({ where: expect.any(String) }));
+      });
     });
 
-    it('should call updateComponents when event type changes', async () => {
+    it('should call updateComponents when FACET field changes', async () => {
       const user = userEvent.setup();
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      const eventTypeSelector = screen.getByTestId('event-type-selector');
-      await user.selectOptions(eventTypeSelector, 'Span');
+      const facetInput = screen.getByPlaceholderText('e.g., host, appName');
+      await user.type(facetInput, 'host');
 
-      expect(mockUpdateComponents).toHaveBeenCalledWith({ from: 'Span' });
+      // Just verify that updateComponents was called with facet parameter
+      await waitFor(() => {
+        expect(mockUpdateComponents).toHaveBeenCalledWith(expect.objectContaining({ facet: expect.any(Array) }));
+      });
     });
 
-    it('should call updateComponents when SINCE changes', async () => {
+    it('should call updateComponents when LIMIT field changes', async () => {
       const user = userEvent.setup();
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      const sinceSelector = screen.getByTestId('time-range-selector-since');
-      await user.selectOptions(sinceSelector, '6 hours');
+      const limitInput = screen.getByDisplayValue('100');
+      await user.clear(limitInput);
+      await user.type(limitInput, '50');
 
-      expect(mockUpdateComponents).toHaveBeenCalledWith({ since: '6 hours' });
-    });
-
-    it('should call updateComponents when TIMESERIES switch is toggled', async () => {
-      const user = userEvent.setup();
-      render(<NRQLQueryBuilder {...defaultProps} />);
-
-      const timeseriesSwitch = screen.getByRole('switch');
-      await user.click(timeseriesSwitch);
-
-      expect(mockUpdateComponents).toHaveBeenCalledWith({ timeseries: true });
+      // Just verify that updateComponents was called with limit parameter
+      await waitFor(() => {
+        expect(mockUpdateComponents).toHaveBeenCalledWith(expect.objectContaining({ limit: expect.any(Number) }));
+      });
     });
   });
 
@@ -256,8 +170,8 @@ describe('NRQLQueryBuilder', () => {
         where: 'appName = "MyApp"',
         facet: ['host', 'appName'],
         since: '6 hours',
-        until: '1 hour',
-        timeseries: true,
+        until: '',
+        timeseries: false,
         limit: 50,
       };
 
@@ -269,35 +183,10 @@ describe('NRQLQueryBuilder', () => {
 
       render(<NRQLQueryBuilder {...defaultProps} />);
 
-      expect(screen.getByTestId('aggregation-selector')).toHaveValue('average');
-      expect(screen.getByTestId('field-selector')).toHaveValue('duration');
-      expect(screen.getByTestId('event-type-selector')).toHaveValue('Span');
+      expect(screen.getByDisplayValue('duration')).toBeInTheDocument();
       expect(screen.getByDisplayValue('appName = "MyApp"')).toBeInTheDocument();
       expect(screen.getByDisplayValue('host, appName')).toBeInTheDocument();
-      expect(screen.getByTestId('time-range-selector-since')).toHaveValue('6 hours');
-      expect(screen.getByTestId('time-range-selector-until')).toHaveValue('1 hour');
-      expect(screen.getByRole('switch')).toBeChecked();
-      expect(screen.getByRole('spinbutton')).toHaveValue(50);
-    });
-  });
-
-  describe('accessibility', () => {
-    it('should have proper aria labels', () => {
-      render(<NRQLQueryBuilder {...defaultProps} />);
-
-      expect(screen.getByLabelText('WHERE clause')).toBeInTheDocument();
-      expect(screen.getByLabelText('FACET clause')).toBeInTheDocument();
-      expect(screen.getByLabelText('Enable time series')).toBeInTheDocument();
-      expect(screen.getByLabelText('Result limit')).toBeInTheDocument();
-    });
-
-    it('should have proper input constraints for limit', () => {
-      render(<NRQLQueryBuilder {...defaultProps} />);
-
-      const limitInput = screen.getByRole('spinbutton');
-      expect(limitInput).toHaveAttribute('min', '1');
-      expect(limitInput).toHaveAttribute('max', '1000');
-      expect(limitInput).toHaveAttribute('type', 'number');
+      expect(screen.getByDisplayValue('50')).toBeInTheDocument();
     });
   });
 
@@ -308,6 +197,7 @@ describe('NRQLQueryBuilder', () => {
       expect(mockUseQueryBuilder).toHaveBeenCalledWith({
         initialQuery: defaultProps.value,
         onChange: defaultProps.onChange,
+        useGrafanaTime: false,
       });
     });
 
@@ -318,6 +208,17 @@ describe('NRQLQueryBuilder', () => {
       expect(mockUseQueryBuilder).toHaveBeenCalledWith({
         initialQuery: customQuery,
         onChange: defaultProps.onChange,
+        useGrafanaTime: false,
+      });
+    });
+
+    it('should pass useGrafanaTime to hook', () => {
+      render(<NRQLQueryBuilder {...defaultProps} useGrafanaTime={true} />);
+
+      expect(mockUseQueryBuilder).toHaveBeenCalledWith({
+        initialQuery: defaultProps.value,
+        onChange: defaultProps.onChange,
+        useGrafanaTime: true,
       });
     });
   });

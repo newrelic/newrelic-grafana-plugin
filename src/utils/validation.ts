@@ -207,6 +207,56 @@ export function validateNrqlQuery(query: string): ValidationResult {
     };
   }
 
+  // Enhanced validation: Check that FROM clause has an event type
+  const fromMatch = trimmedQuery.match(/FROM\s+(\S+)/i);
+  if (!fromMatch || !fromMatch[1]) {
+    return {
+      isValid: false,
+      message: 'FROM clause must specify an event type (e.g., Transaction, Span, Metric)',
+    };
+  }
+
+  const eventType = fromMatch[1].toUpperCase();
+  
+  // Check if event type is immediately followed by a clause keyword (invalid syntax)
+  const invalidEventTypes = ['WHERE', 'SINCE', 'UNTIL', 'FACET', 'TIMESERIES', 'LIMIT', 'ORDER', 'COMPARE'];
+  if (invalidEventTypes.includes(eventType)) {
+    return {
+      isValid: false,
+      message: `FROM clause is missing event type. Found "${eventType}" instead of an event type like Transaction, Span, etc.`,
+    };
+  }
+
+  // Additional syntax checks
+  const upperQuery = trimmedQuery.toUpperCase();
+
+  // Check for incomplete SELECT clause
+  const selectMatch = trimmedQuery.match(/SELECT\s+(.+?)\s+FROM/i);
+  if (!selectMatch || !selectMatch[1].trim()) {
+    return {
+      isValid: false,
+      message: 'SELECT clause cannot be empty. Use SELECT *, count(*), or specific fields/functions',
+    };
+  }
+
+  // Check for basic syntax errors in common patterns
+  if (upperQuery.includes('SELECT  FROM') || upperQuery.includes('FROM  WHERE')) {
+    return {
+      isValid: false,
+      message: 'Query has missing components. Check your SELECT and FROM clauses',
+    };
+  }
+
+  // Check for unmatched parentheses in functions
+  const openParens = (trimmedQuery.match(/\(/g) || []).length;
+  const closeParens = (trimmedQuery.match(/\)/g) || []).length;
+  if (openParens !== closeParens) {
+    return {
+      isValid: false,
+      message: 'Unmatched parentheses in query. Check your function calls',
+    };
+  }
+
   return { isValid: true };
 }
 

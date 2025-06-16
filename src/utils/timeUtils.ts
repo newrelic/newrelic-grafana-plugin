@@ -110,18 +110,36 @@ export function buildNRQLWithTimeIntegration(
   useGrafanaTime: boolean = true,
   customTimeClause?: string
 ): string {
+  if (!baseQuery.trim()) {
+    return baseQuery;
+  }
+
   if (useGrafanaTime) {
-    // Use Grafana template variables for automatic time picker integration
-    if (baseQuery.includes('SINCE') || baseQuery.includes('UNTIL')) {
-      // Query already has time clauses, replace them
-      return baseQuery.replace(
-        /SINCE\s+[^)]*(?:ago|UTC)?\s*(?:UNTIL\s+[^)]*(?:ago|UTC)?)?/gi,
-        'SINCE timestamp >= $__from AND timestamp <= $__to'
+    // Check if query already has Grafana time variables
+    if (hasGrafanaTimeVariables(baseQuery)) {
+      return baseQuery; // Already has Grafana time variables
+    }
+
+    // Remove existing SINCE/UNTIL clauses when adding Grafana time
+    let query = baseQuery.replace(/\s*SINCE\s+[^)]*ago\s*/gi, ' ');
+    query = query.replace(/\s*UNTIL\s+[^)]*ago\s*/gi, ' ');
+    query = query.replace(/\s+/g, ' ').trim(); // Clean up multiple spaces
+
+    // Add Grafana time variables to WHERE clause
+    const hasWhere = /\bWHERE\b/i.test(query);
+    
+    if (hasWhere) {
+      // Add to existing WHERE clause
+      query = query.replace(
+        /(\bWHERE\b\s+)/i,
+        '$1timestamp >= $__from AND timestamp <= $__to AND '
       );
     } else {
-      // Add Grafana time filter
-      return `${baseQuery} WHERE timestamp >= $__from AND timestamp <= $__to`;
+      // Add new WHERE clause
+      query = `${query} WHERE timestamp >= $__from AND timestamp <= $__to`;
     }
+    
+    return query;
   } else if (customTimeClause) {
     return `${baseQuery} ${customTimeClause}`;
   }

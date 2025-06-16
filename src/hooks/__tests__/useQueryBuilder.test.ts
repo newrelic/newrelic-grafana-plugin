@@ -415,4 +415,97 @@ describe('useQueryBuilder', () => {
       expect(result.current.queryComponents.limit).toBe(100); // Should fall back to default
     });
   });
+
+  describe('NRQL parsing and building', () => {
+    it('should parse NRQL queries with aggregations correctly', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT average(duration) FROM Transaction WHERE appName = "test" SINCE 1 hour ago',
+        onChange: jest.fn(),
+        useGrafanaTime: false
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('average');
+      expect(result.current.queryComponents.field).toBe('duration');
+      expect(result.current.queryComponents.from).toBe('Transaction');
+      expect(result.current.queryComponents.where).toBe('appName = "test"');
+      expect(result.current.queryComponents.since).toBe('1 hour');
+    });
+
+    it('should handle Grafana time variables without duplicating WHERE clauses', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT average(duration) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to LIMIT 100',
+        onChange: jest.fn(),
+        useGrafanaTime: true
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('average');
+      expect(result.current.queryComponents.field).toBe('duration');
+      expect(result.current.queryComponents.from).toBe('Transaction');
+      expect(result.current.queryComponents.where).toBe(''); // Should be cleaned
+      expect(result.current.queryComponents.limit).toBe(100);
+    });
+
+    it('should handle mixed WHERE clauses with Grafana time variables', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT sum(duration) FROM Transaction WHERE appName = "test" AND timestamp >= $__from AND timestamp <= $__to',
+        onChange: jest.fn(),
+        useGrafanaTime: true
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('sum');
+      expect(result.current.queryComponents.field).toBe('duration');
+      expect(result.current.queryComponents.where).toBe('appName = "test"'); // Grafana time vars should be removed
+    });
+
+    it('should build query correctly with useGrafanaTime', () => {
+      const onChange = jest.fn();
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT count(*) FROM Transaction',
+        onChange,
+        useGrafanaTime: true
+      }));
+
+      act(() => {
+        result.current.updateComponents({ where: 'appName = "test"' });
+      });
+
+      // Should build query with Grafana time variables
+      expect(onChange).toHaveBeenCalledWith(
+        'SELECT count(*) FROM Transaction WHERE appName = "test" AND timestamp >= $__from AND timestamp <= $__to'
+      );
+    });
+
+    it('should validate invalid aggregations', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT xyz(duration) FROM Transaction',
+        onChange: jest.fn(),
+        useGrafanaTime: false
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('xyz'); // Should parse even if invalid
+      expect(result.current.queryComponents.field).toBe('duration');
+    });
+
+    it('should handle percentile aggregation correctly', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT percentile(duration, 95) FROM Transaction',
+        onChange: jest.fn(),
+        useGrafanaTime: false
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('percentile');
+      expect(result.current.queryComponents.field).toBe('duration');
+    });
+
+    it('should handle count(*) correctly', () => {
+      const { result } = renderHook(() => useQueryBuilder({
+        initialQuery: 'SELECT count(*) FROM Transaction',
+        onChange: jest.fn(),
+        useGrafanaTime: false
+      }));
+
+      expect(result.current.queryComponents.aggregation).toBe('count');
+      expect(result.current.queryComponents.field).toBe('');
+    });
+  });
 }); 

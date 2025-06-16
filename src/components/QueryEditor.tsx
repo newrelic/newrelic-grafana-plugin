@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { InlineField, InlineFieldRow, TextArea, Button, Alert, Switch, ButtonGroup, Icon } from '@grafana/ui';
+import { InlineField, InlineFieldRow, Button, Alert, Switch, ButtonGroup, Icon, TextArea, Tooltip } from '@grafana/ui';
 import { DataSource } from '../datasource';
 import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
@@ -24,6 +24,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
 
   // Local state for the raw NRQL text
   const [rawNRQL, setRawNRQL] = useState(query.queryText || '');
+  
+  // Track if user is currently typing to prevent cursor jumps
+  const isUserTypingRef = useRef(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
    * Validates the NRQL query and updates validation state
@@ -56,34 +60,56 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     }
   }, [query.refId]);
 
-  // Update rawNRQL when query changes externally
+  // Update rawNRQL when query changes externally (but not when user is typing)
   useEffect(() => {
-    if (query.queryText !== rawNRQL) {
+    if (!isUserTypingRef.current && query.queryText !== rawNRQL) {
       setRawNRQL(query.queryText || '');
       validateQuery(query.queryText || '');
     }
   }, [query.queryText, rawNRQL, validateQuery]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
   /**
    * Handles changes to the raw NRQL text
    */
   const handleNRQLChange = useCallback((queryText: string) => {
+    // Mark that user is actively typing
+    isUserTypingRef.current = true;
+    
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Set timeout to mark typing as finished
+    typingTimeoutRef.current = setTimeout(() => {
+      isUserTypingRef.current = false;
+    }, 500);
+    
     setRawNRQL(queryText);
     
-    // Apply time integration if enabled
-    const finalQuery = useGrafanaTime ? 
-      buildNRQLWithTimeIntegration(queryText, true) : 
-      queryText;
+    // For time integration, we need to be careful not to modify the text that's being typed
+    // Only apply time integration when the user stops typing
+    const finalQuery = queryText; // Keep the raw user input
     
     const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
     
     // Debounced validation
-    const timeoutId = setTimeout(() => {
-      validateQuery(finalQuery);
+    setTimeout(() => {
+      const queryToValidate = useGrafanaTime ? 
+        buildNRQLWithTimeIntegration(queryText, true) : 
+        queryText;
+      validateQuery(queryToValidate);
     }, 300);
-
-    return () => clearTimeout(timeoutId);
   }, [query, onChange, validateQuery, useGrafanaTime]);
 
   /**
@@ -226,6 +252,9 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Icon name="clock-nine" size="sm" />
             <span style={{ fontSize: '12px', color: '#8e8e8e' }}>Auto time</span>
+            <Tooltip content={useGrafanaTime ? `Query uses dashboard time range. Variables: ${Object.values(GRAFANA_TIME_VARIABLES).slice(0, 3).join(', ')}...` : "Enable to use Grafana's dashboard time picker instead of manual time clauses"}>
+              <Icon name="info-circle" size="xs" style={{ cursor: 'help', color: '#8e8e8e' }} />
+            </Tooltip>
             <Switch
               value={useGrafanaTime}
               onChange={(e) => handleTimeIntegrationToggle(e.currentTarget.checked)}
@@ -244,24 +273,6 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           </Button>
         </div>
       </div>
-
-      {/* Time Integration Status */}
-      {useGrafanaTime && (
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#0073e6', 
-          backgroundColor: '#e3f2fd',
-          padding: '6px 8px',
-          borderRadius: '3px',
-          marginBottom: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}>
-          <Icon name="info-circle" size="xs" />
-          Query uses dashboard time range. Variables: {Object.values(GRAFANA_TIME_VARIABLES).slice(0, 3).join(', ')}...
-        </div>
-      )}
 
       {/* Validation Error Alert */}
       {validationError && (
@@ -284,17 +295,14 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         <div role="region" aria-label="NRQL Text Editor">
           <TextArea
             value={rawNRQL}
-            onChange={e => handleNRQLChange(e.currentTarget.value)}
+            onChange={(e) => handleNRQLChange(e.currentTarget.value)}
             placeholder={useGrafanaTime 
               ? "SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to"
               : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
             }
-            rows={6}
-            aria-label="NRQL Query Text"
-            aria-describedby="nrql-help"
-            aria-invalid={!!validationError}
+            rows={8}
+            invalid={!!validationError}
             data-testid="nrql-textarea"
-            style={{ fontFamily: 'Monaco, Consolas, "Courier New", monospace' }}
           />
           
           {/* Help Text */}
@@ -312,24 +320,24 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
               : 'Use manual time clauses like "SINCE 1 hour ago"'
             }
           </div>
-        </div>
-      )}
-
-      {/* Query Status */}
-      {query.queryText && !validationError && (
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#28a745', 
-          marginTop: '6px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}>
-          <Icon name="check" size="xs" />
-          Query is valid and ready to execute
-          {useGrafanaTime && hasGrafanaTimeVariables(query.queryText) && 
-            ' (with dashboard time integration)'
-          }
+          
+          {/* Query Status - only show for text editor */}
+          {query.queryText && !validationError && (
+            <div style={{ 
+              fontSize: '11px', 
+              color: '#28a745', 
+              marginTop: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Icon name="check" size="xs" />
+              Query is valid and ready to execute
+              {useGrafanaTime && hasGrafanaTimeVariables(query.queryText) && 
+                ' (with dashboard time integration)'
+              }
+            </div>
+          )}
         </div>
       )}
     </div>

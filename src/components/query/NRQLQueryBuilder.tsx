@@ -1,5 +1,7 @@
-import React, { useState, useCallback } from 'react';
-import { InlineFieldRow, Input, InlineField, Select } from '@grafana/ui';
+import React, { useState, useCallback, useEffect } from 'react';
+import { InlineFieldRow, Input, InlineField, Select, Alert } from '@grafana/ui';
+import { useQueryBuilder } from '../../hooks/useQueryBuilder';
+import { NRQL_AGGREGATION_FUNCTIONS } from '../../types';
 
 interface NRQLQueryBuilderProps {
   /** The current query value */
@@ -12,16 +14,22 @@ interface NRQLQueryBuilderProps {
   useGrafanaTime?: boolean;
 }
 
-export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime = false }: NRQLQueryBuilderProps) {
-  const [aggregation, setAggregation] = useState('count');
-  const [field, setField] = useState('');
-  const [eventType, setEventType] = useState('Transaction');
-  const [whereClause, setWhereClause] = useState('');
-  const [facetClause, setFacetClause] = useState('');
-  const [sinceClause, setSinceClause] = useState('1 hour');
-  const [limit, setLimit] = useState(100);
+// Valid aggregation functions for validation
+const VALID_AGGREGATIONS = [
+  'count', 'sum', 'average', 'min', 'max', 'latest', 'earliest', 
+  'percentile', 'uniqueCount', 'stddev', 'rate', 'median'
+];
 
-  // Aggregation options
+export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime = false }: NRQLQueryBuilderProps) {
+  const { queryComponents, updateComponents } = useQueryBuilder({
+    initialQuery: value,
+    onChange,
+    useGrafanaTime
+  });
+
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Aggregation options - only show valid ones
   const aggregationOptions = [
     { label: 'count(*)', value: 'count' },
     { label: 'average', value: 'average' },
@@ -29,6 +37,9 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
     { label: 'min', value: 'min' },
     { label: 'max', value: 'max' },
     { label: 'latest', value: 'latest' },
+    { label: 'earliest', value: 'earliest' },
+    { label: 'percentile', value: 'percentile' },
+    { label: 'uniqueCount', value: 'uniqueCount' },
   ];
 
   // Event type options
@@ -38,6 +49,9 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
     { label: 'Metric', value: 'Metric' },
     { label: 'Log', value: 'Log' },
     { label: 'Error', value: 'Error' },
+    { label: 'PageView', value: 'PageView' },
+    { label: 'Mobile', value: 'Mobile' },
+    { label: 'Browser', value: 'Browser' },
   ];
 
   // Time range options
@@ -50,110 +64,114 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
     { label: '6 hours', value: '6 hours' },
     { label: '12 hours', value: '12 hours' },
     { label: '1 day', value: '1 day' },
+    { label: '7 days', value: '7 days' },
   ];
 
-  // Build query from components
-  const buildQuery = useCallback(() => {
-    let selectClause = '';
-    if (aggregation === 'count') {
-      selectClause = 'count(*)';
-    } else if (field) {
-      selectClause = `${aggregation}(${field})`;
-    } else {
-      selectClause = `${aggregation}(duration)`;
+  // Validate components whenever they change
+  useEffect(() => {
+    const errors: string[] = [];
+
+    // Validate aggregation
+    if (queryComponents.aggregation && !VALID_AGGREGATIONS.includes(queryComponents.aggregation)) {
+      errors.push(`Invalid aggregation function: "${queryComponents.aggregation}". Use one of: ${VALID_AGGREGATIONS.join(', ')}`);
     }
 
-    let query = `SELECT ${selectClause} FROM ${eventType}`;
-    
-    if (whereClause.trim()) {
-      query += ` WHERE ${whereClause}`;
+    // Validate field for certain aggregations
+    if (['sum', 'average', 'min', 'max', 'percentile'].includes(queryComponents.aggregation) && 
+        !queryComponents.field?.trim()) {
+      errors.push(`Aggregation "${queryComponents.aggregation}" requires a field name (e.g., duration, responseTime)`);
     }
-    
-    if (facetClause.trim()) {
-      query += ` FACET ${facetClause}`;
-    }
-    
-    if (!useGrafanaTime && sinceClause.trim()) {
-      query += ` SINCE ${sinceClause} ago`;
-    } else if (useGrafanaTime) {
-      if (whereClause.trim()) {
-        query += ` AND timestamp >= $__from AND timestamp <= $__to`;
-      } else {
-        query += ` WHERE timestamp >= $__from AND timestamp <= $__to`;
-      }
-    }
-    
-    if (limit > 0) {
-      query += ` LIMIT ${limit}`;
-    }
-    
-    return query;
-  }, [aggregation, field, eventType, whereClause, facetClause, sinceClause, limit, useGrafanaTime]);
 
-  // Update query when components change
-  const updateQuery = useCallback(() => {
-    const newQuery = buildQuery();
-    onChange(newQuery);
-  }, [buildQuery, onChange]);
+    // Validate event type
+    if (!queryComponents.from?.trim()) {
+      errors.push('Event type (FROM clause) is required');
+    }
 
-  // Handle component changes
+    setValidationErrors(errors);
+  }, [queryComponents]);
+
+  // Handle component changes with validation
   const handleAggregationChange = useCallback((selectedOption: any) => {
-    setAggregation(selectedOption.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    const newAggregation = selectedOption.value;
+    
+    // Reset field if switching to count
+    const updates: any = { aggregation: newAggregation };
+    if (newAggregation === 'count') {
+      updates.field = '';
+    } else if (!queryComponents.field && newAggregation !== 'count') {
+      // Set default field for non-count aggregations
+      updates.field = 'duration';
+    }
+    
+    updateComponents(updates);
+  }, [updateComponents, queryComponents.field]);
 
   const handleEventTypeChange = useCallback((selectedOption: any) => {
-    setEventType(selectedOption.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    updateComponents({ from: selectedOption.value });
+  }, [updateComponents]);
 
   const handleFieldChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setField(e.target.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    updateComponents({ field: e.target.value });
+  }, [updateComponents]);
 
   const handleWhereChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setWhereClause(e.target.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    updateComponents({ where: e.target.value });
+  }, [updateComponents]);
 
   const handleFacetChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setFacetClause(e.target.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    const facetValue = e.target.value;
+    const facetArray = facetValue ? facetValue.split(',').map(s => s.trim()).filter(Boolean) : [];
+    updateComponents({ facet: facetArray });
+  }, [updateComponents]);
 
   const handleSinceChange = useCallback((selectedOption: any) => {
-    setSinceClause(selectedOption.value);
-    setTimeout(updateQuery, 0);
-  }, [updateQuery]);
+    updateComponents({ since: selectedOption.value });
+  }, [updateComponents]);
 
   const handleLimitChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     if (!isNaN(newLimit) && newLimit >= 0) {
-      setLimit(newLimit);
-      setTimeout(updateQuery, 0);
+      updateComponents({ limit: newLimit });
     }
-  }, [updateQuery]);
+  }, [updateComponents]);
+
+  // Find selected options for selects
+  const selectedAggregation = aggregationOptions.find(opt => opt.value === queryComponents.aggregation);
+  const selectedEventType = eventTypeOptions.find(opt => opt.value === queryComponents.from);
+  const selectedTimeRange = timeRangeOptions.find(opt => opt.value === queryComponents.since);
 
   return (
     <div style={{ padding: '8px 0' }}>
+      {/* Validation Errors */}
+      {validationErrors.length > 0 && (
+        <Alert title="Query Builder Validation Errors" severity="error" style={{ marginBottom: '12px' }}>
+          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+            {validationErrors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
       {/* Aggregation and Field */}
       <InlineFieldRow>
         <InlineField label="Aggregation" labelWidth={14}>
           <Select
             options={aggregationOptions}
-            value={aggregationOptions.find(opt => opt.value === aggregation)}
+            value={selectedAggregation}
             onChange={handleAggregationChange}
             width={20}
+            placeholder="Select aggregation"
           />
         </InlineField>
-        {aggregation !== 'count' && (
+        {queryComponents.aggregation !== 'count' && (
           <InlineField label="Field" labelWidth={10}>
             <Input
-              value={field}
+              value={queryComponents.field || ''}
               onChange={handleFieldChange}
-              placeholder="e.g., duration"
-              width={20}
+              placeholder="e.g., duration, responseTime"
+              width={25}
+              invalid={['sum', 'average', 'min', 'max', 'percentile'].includes(queryComponents.aggregation) && !queryComponents.field?.trim()}
             />
           </InlineField>
         )}
@@ -164,9 +182,11 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
         <InlineField label="FROM" labelWidth={14}>
           <Select
             options={eventTypeOptions}
-            value={eventTypeOptions.find(opt => opt.value === eventType)}
+            value={selectedEventType}
             onChange={handleEventTypeChange}
             width={30}
+            placeholder="Select event type"
+            invalid={!queryComponents.from?.trim()}
           />
         </InlineField>
       </InlineFieldRow>
@@ -175,10 +195,10 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
       <InlineFieldRow>
         <InlineField label="WHERE" labelWidth={14}>
           <Input
-            value={whereClause}
+            value={queryComponents.where || ''}
             onChange={handleWhereChange}
-            placeholder="e.g., appName = 'MyApp'"
-            width={40}
+            placeholder="e.g., appName = 'MyApp' AND duration > 1"
+            width={50}
           />
         </InlineField>
       </InlineFieldRow>
@@ -187,7 +207,7 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
       <InlineFieldRow>
         <InlineField label="FACET" labelWidth={14}>
           <Input
-            value={facetClause}
+            value={queryComponents.facet?.join(', ') || ''}
             onChange={handleFacetChange}
             placeholder="e.g., host, appName"
             width={40}
@@ -195,15 +215,16 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
         </InlineField>
       </InlineFieldRow>
 
-      {/* Time range (only show if not using Grafana time picker) */}
+      {/* Time range (only show if not using Grafana time picker and time filtering is enabled) */}
       {!useGrafanaTime && (
         <InlineFieldRow>
           <InlineField label="SINCE" labelWidth={14}>
             <Select
               options={timeRangeOptions}
-              value={timeRangeOptions.find(opt => opt.value === sinceClause)}
+              value={selectedTimeRange}
               onChange={handleSinceChange}
               width={20}
+              placeholder="Select time range"
             />
           </InlineField>
         </InlineFieldRow>
@@ -232,14 +253,30 @@ export function NRQLQueryBuilder({ value, onChange, onRunQuery, useGrafanaTime =
         <InlineField label="LIMIT" labelWidth={14}>
           <Input
             type="number"
-            value={limit}
+            value={queryComponents.limit || ''}
             onChange={handleLimitChange}
             min={1}
             max={1000}
             width={15}
+            placeholder="100"
           />
         </InlineField>
       </InlineFieldRow>
+
+      {/* Query Preview */}
+      <div style={{ 
+        marginTop: '12px', 
+        padding: '8px', 
+        backgroundColor: '#f5f5f5', 
+        borderRadius: '4px',
+        fontSize: '12px',
+        fontFamily: 'monospace'
+      }}>
+        <strong>Generated Query:</strong><br/>
+        <span style={{ color: validationErrors.length > 0 ? '#d32f2f' : '#2e7d32' }}>
+          {value || 'SELECT count(*) FROM Transaction SINCE 1 hour ago'}
+        </span>
+      </div>
     </div>
   );
 } 
