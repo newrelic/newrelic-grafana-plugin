@@ -1,22 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { InlineField, InlineFieldRow, TextArea, Button, Alert } from '@grafana/ui';
+import { InlineField, InlineFieldRow, TextArea, Button, Alert, Switch, ButtonGroup, Icon } from '@grafana/ui';
 import { DataSource } from '../datasource';
 import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
-import { NRQLQueryBuilder } from './NRQLQueryBuilder';
+import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
 import { validateNrqlQuery } from '../utils/validation';
 import { logger } from '../utils/logger';
+import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VARIABLES } from '../utils/timeUtils';
 
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
 /**
  * Query editor component for New Relic NRQL queries
- * Provides both a visual query builder and raw text editor
+ * Provides both a visual query builder and raw text editor with time picker integration
  */
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const [useQueryBuilder, setUseQueryBuilder] = useState(false);
   const [validationError, setValidationError] = useState<string>('');
   const [isValidating, setIsValidating] = useState(false);
+  const [useGrafanaTime, setUseGrafanaTime] = useState(
+    query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
+  );
 
   // Local state for the raw NRQL text
   const [rawNRQL, setRawNRQL] = useState(query.queryText || '');
@@ -66,16 +70,21 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const handleNRQLChange = useCallback((queryText: string) => {
     setRawNRQL(queryText);
     
-    const updatedQuery = { ...query, queryText };
+    // Apply time integration if enabled
+    const finalQuery = useGrafanaTime ? 
+      buildNRQLWithTimeIntegration(queryText, true) : 
+      queryText;
+    
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
     
     // Debounced validation
     const timeoutId = setTimeout(() => {
-      validateQuery(queryText);
+      validateQuery(finalQuery);
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query, onChange, validateQuery]);
+  }, [query, onChange, validateQuery, useGrafanaTime]);
 
   /**
    * Handles changes from the query builder
@@ -83,11 +92,52 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const handleBuilderQueryChange = useCallback((queryText: string) => {
     setRawNRQL(queryText); // Keep in sync
     
-    const updatedQuery = { ...query, queryText };
+    // Apply time integration if enabled
+    const finalQuery = useGrafanaTime ? 
+      buildNRQLWithTimeIntegration(queryText, true) : 
+      queryText;
+    
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
     
-    validateQuery(queryText);
-  }, [query, onChange, validateQuery]);
+    validateQuery(finalQuery);
+  }, [query, onChange, validateQuery, useGrafanaTime]);
+
+  /**
+   * Handles toggling Grafana time picker integration
+   */
+  const handleTimeIntegrationToggle = useCallback((enabled: boolean) => {
+    setUseGrafanaTime(enabled);
+    
+    let updatedQueryText = rawNRQL;
+    
+    if (enabled) {
+      // Enable Grafana time integration
+      updatedQueryText = buildNRQLWithTimeIntegration(rawNRQL, true);
+    } else {
+      // Remove Grafana time variables and use manual time clauses
+      updatedQueryText = rawNRQL.replace(
+        /WHERE\s+timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
+        'SINCE 1 hour ago'
+      );
+    }
+    
+    const updatedQuery = { 
+      ...query, 
+      queryText: updatedQueryText, 
+      useGrafanaTime: enabled 
+    };
+    
+    onChange(updatedQuery);
+    setRawNRQL(updatedQueryText);
+    validateQuery(updatedQueryText);
+    
+    logger.debug('Time integration toggled', {
+      refId: query.refId,
+      enabled,
+      hasGrafanaVars: hasGrafanaTimeVariables(updatedQueryText),
+    });
+  }, [rawNRQL, query, onChange, validateQuery]);
 
   /**
    * Toggles between query builder and text editor
@@ -104,13 +154,15 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     if (newMode) {
       // When switching to query builder, ensure the query is in a valid format
       if (!query.queryText || query.queryText.trim() === '') {
-        const defaultQuery = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
+        const defaultQuery = useGrafanaTime 
+          ? 'SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to'
+          : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
         setRawNRQL(defaultQuery);
-        onChange({ ...query, queryText: defaultQuery });
+        onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
         validateQuery(defaultQuery);
       }
     }
-  }, [useQueryBuilder, query, onChange, validateQuery]);
+  }, [useQueryBuilder, query, onChange, validateQuery, useGrafanaTime]);
 
   /**
    * Handles running the query
@@ -126,45 +178,94 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         return;
       }
 
-      logger.debug('Running query', { refId: query.refId });
+      logger.debug('Running query', { 
+        refId: query.refId,
+        useGrafanaTime,
+        hasTimeVars: hasGrafanaTimeVariables(query.queryText || ''),
+      });
       onRunQuery();
     } catch (error) {
       logger.error('Error running query', error as Error, {
         refId: query.refId,
       });
     }
-  }, [validationError, query.refId, onRunQuery]);
+  }, [validationError, query.refId, query.queryText, useGrafanaTime, onRunQuery]);
 
   return (
-    <div>
-      {/* Query Editor Controls */}
-      <InlineFieldRow>
-        <InlineField>
+    <div style={{ padding: '8px 0' }}>
+      {/* Header Controls */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '12px',
+        gap: '8px'
+      }}>
+        {/* Left side - Editor mode toggle */}
+        <ButtonGroup>
+          <Button
+            variant={!useQueryBuilder ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => !useQueryBuilder || toggleQueryBuilder()}
+          >
+            <Icon name="edit" style={{ marginRight: '4px' }} />
+            NRQL Editor
+          </Button>
           <Button
             variant={useQueryBuilder ? 'primary' : 'secondary'}
-            onClick={toggleQueryBuilder}
-            aria-label={`Switch to ${useQueryBuilder ? 'text editor' : 'query builder'}`}
-            data-testid="query-mode-toggle"
+            size="sm"
+            onClick={() => useQueryBuilder || toggleQueryBuilder()}
           >
-            {useQueryBuilder ? 'Switch to Text Editor' : 'Use Query Builder'}
+            <Icon name="apps" style={{ marginRight: '4px' }} />
+            Query Builder
           </Button>
-        </InlineField>
-        <InlineField>
+        </ButtonGroup>
+
+        {/* Right side - Time picker toggle and run button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Icon name="clock-nine" size="sm" />
+            <span style={{ fontSize: '12px', color: '#8e8e8e' }}>Auto time</span>
+            <Switch
+              value={useGrafanaTime}
+              onChange={(e) => handleTimeIntegrationToggle(e.currentTarget.checked)}
+              data-testid="grafana-time-toggle"
+            />
+          </div>
+          
           <Button
             variant="primary"
+            size="sm"
             onClick={handleRunQuery}
-            disabled={!!validationError || isValidating}
-            aria-label="Run NRQL query"
-            data-testid="run-query-button"
+            disabled={!!validationError || isValidating || !query.queryText?.trim()}
+            icon="play"
           >
-            {isValidating ? 'Validating...' : 'Run Query'}
+            {isValidating ? 'Validating...' : 'Run'}
           </Button>
-        </InlineField>
-      </InlineFieldRow>
+        </div>
+      </div>
+
+      {/* Time Integration Status */}
+      {useGrafanaTime && (
+        <div style={{ 
+          fontSize: '11px', 
+          color: '#0073e6', 
+          backgroundColor: '#e3f2fd',
+          padding: '6px 8px',
+          borderRadius: '3px',
+          marginBottom: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}>
+          <Icon name="info-circle" size="xs" />
+          Query uses dashboard time range. Variables: {Object.values(GRAFANA_TIME_VARIABLES).slice(0, 3).join(', ')}...
+        </div>
+      )}
 
       {/* Validation Error Alert */}
       {validationError && (
-        <Alert title="Query Validation Error" severity="error">
+        <Alert title="Query Validation Error" severity="error" style={{ marginBottom: '8px' }}>
           {validationError}
         </Alert>
       )}
@@ -176,44 +277,59 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             value={query.queryText || ''}
             onChange={handleBuilderQueryChange}
             onRunQuery={handleRunQuery}
+            useGrafanaTime={useGrafanaTime}
           />
         </div>
       ) : (
-        <div role="region" aria-label="NRQL Text Editor" style={{ position: 'relative' }}>
+        <div role="region" aria-label="NRQL Text Editor">
           <TextArea
             value={rawNRQL}
             onChange={e => handleNRQLChange(e.currentTarget.value)}
-            placeholder="Enter NRQL query... (e.g., SELECT count(*) FROM Transaction SINCE 1 hour ago)"
-            rows={5}
+            placeholder={useGrafanaTime 
+              ? "SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to"
+              : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
+            }
+            rows={6}
             aria-label="NRQL Query Text"
             aria-describedby="nrql-help"
             aria-invalid={!!validationError}
             data-testid="nrql-textarea"
+            style={{ fontFamily: 'Monaco, Consolas, "Courier New", monospace' }}
           />
           
           {/* Help Text */}
-          <div id="nrql-help" style={{ fontSize: '12px', color: '#6c757d', marginTop: '8px' }}>
-            Enter your NRQL query. Use Grafana template variables like $__timeFilter() for dynamic queries.
+          <div id="nrql-help" style={{ 
+            fontSize: '11px', 
+            color: '#8e8e8e', 
+            marginTop: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <Icon name="question-circle" size="xs" />
+            {useGrafanaTime 
+              ? 'Use $__from, $__to variables for automatic time picker integration'
+              : 'Use manual time clauses like "SINCE 1 hour ago"'
+            }
           </div>
-          
-          <Button 
-            onClick={handleRunQuery} 
-            icon="play" 
-            variant="primary" 
-            style={{ marginTop: 8 }}
-            disabled={!!validationError || isValidating}
-            aria-label="Run NRQL query"
-            data-testid="run-query-text-button"
-          >
-            {isValidating ? 'Validating...' : 'Run Query'}
-          </Button>
         </div>
       )}
 
-      {/* Query Information */}
+      {/* Query Status */}
       {query.queryText && !validationError && (
-        <div style={{ fontSize: '12px', color: '#28a745', marginTop: '8px' }}>
-          ✓ Query is valid and ready to execute
+        <div style={{ 
+          fontSize: '11px', 
+          color: '#28a745', 
+          marginTop: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}>
+          <Icon name="check" size="xs" />
+          Query is valid and ready to execute
+          {useGrafanaTime && hasGrafanaTimeVariables(query.queryText) && 
+            ' (with dashboard time integration)'
+          }
         </div>
       )}
     </div>

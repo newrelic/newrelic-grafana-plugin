@@ -41,13 +41,40 @@ export function validateApiKeyDetailed(apiKey: string): ValidationResult {
     };
   }
 
-  // New Relic API keys are typically 40 characters long and contain only alphanumeric characters
-  const apiKeyRegex = /^[A-Za-z0-9]{40}$/;
+  const trimmed = apiKey.trim();
   
-  if (!apiKeyRegex.test(apiKey.trim())) {
+  // New Relic API keys must start with "NRAK-" prefix
+  if (!trimmed.startsWith('NRAK-')) {
     return {
       isValid: false,
-      message: 'API key must be 40 characters long and contain only alphanumeric characters',
+      message: 'New Relic API key must start with "NRAK-"',
+    };
+  }
+
+  // Check minimum length (NRAK- + at least 5 characters)
+  if (trimmed.length < 10) {
+    return {
+      isValid: false,
+      message: 'API key is too short. It should be at least 10 characters long.',
+    };
+  }
+
+  // Validate the key part after "NRAK-" (should be alphanumeric)
+  const keyPart = trimmed.substring(5); // Remove NRAK- prefix
+  const alphanumericRegex = /^[A-Za-z0-9]+$/;
+  
+  if (!alphanumericRegex.test(keyPart)) {
+    return {
+      isValid: false,
+      message: 'API key contains invalid characters. Only alphanumeric characters are allowed after "NRAK-".',
+    };
+  }
+
+  // New Relic API keys are typically around 35-40 characters total
+  if (trimmed.length < 30 || trimmed.length > 50) {
+    return {
+      isValid: false,
+      message: 'API key length appears invalid. New Relic API keys are typically 30-50 characters long.',
     };
   }
 

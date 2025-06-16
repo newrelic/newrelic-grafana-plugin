@@ -11,6 +11,7 @@ import (
 	"newrelic-grafana-plugin/pkg/dataformatter"
 	"newrelic-grafana-plugin/pkg/models"
 	"newrelic-grafana-plugin/pkg/nrdbiface"
+	"newrelic-grafana-plugin/pkg/utils"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -68,11 +69,18 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return resp
 	}
 
-	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID)
+	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID, "useGrafanaTime", qm.UseGrafanaTime)
 
 	nrqlQueryText := "SELECT count(*) FROM Transaction"
 	if qm.QueryText != "" {
 		nrqlQueryText = qm.QueryText
+	}
+
+	// Process Grafana time variables if the query uses them or if useGrafanaTime is enabled
+	if qm.UseGrafanaTime || utils.HasGrafanaTimeVariables(nrqlQueryText) {
+		processedQuery := utils.ProcessNRQLWithTimeVariables(nrqlQueryText, query.TimeRange)
+		log.DefaultLogger.Debug("Processed query with Grafana time variables", "refId", query.RefID, "original", nrqlQueryText, "processed", processedQuery)
+		nrqlQueryText = processedQuery
 	}
 
 	accountID := config.Secrets.AccountId

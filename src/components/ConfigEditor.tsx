@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, useCallback } from 'react';
+import React, { ChangeEvent, useState, useCallback, useMemo } from 'react';
 import { InlineField, InlineFieldRow, SecretInput, Select, Alert } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps, SelectableValue } from '@grafana/data';
 import { NewRelicDataSourceOptions, NewRelicSecureJsonData, NEW_RELIC_REGIONS } from '../types';
@@ -137,11 +137,50 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
   }, [options, jsonData, onOptionsChange]);
 
   // Validate overall configuration
-  const configValidation = validateConfiguration({
-    apiKey: secureJsonData?.apiKey || '',
-    accountId: secureJsonData?.accountID || '',
-    region: jsonData?.region,
-  });
+  const configValidation = useMemo(() => {
+    // If API key and account ID are already configured (secureJsonFields), don't show validation errors
+    const isApiKeyConfigured = !!secureJsonFields?.apiKey;
+    const isAccountIdConfigured = !!secureJsonFields?.accountID;
+    
+    // Only validate if we have actual values to validate (when user is entering new values)
+    const currentApiKey = secureJsonData?.apiKey || '';
+    const currentAccountId = secureJsonData?.accountID || '';
+    
+    // If fields are configured but we don't have current values, assume they're valid
+    if (isApiKeyConfigured && !currentApiKey) {
+      // API key is configured, check other fields
+      if (isAccountIdConfigured && !currentAccountId) {
+        // Both are configured, configuration is valid
+        return { isValid: true };
+      } else if (!isAccountIdConfigured && currentAccountId) {
+        // API key configured, validate new account ID
+        return validateAccountIdDetailed(currentAccountId);
+      } else if (!isAccountIdConfigured && !currentAccountId) {
+        // API key configured, account ID needed
+        return {
+          isValid: false,
+          message: 'Account ID is required',
+        };
+      }
+    } else if (isAccountIdConfigured && !currentAccountId) {
+      // Account ID is configured, validate API key
+      if (currentApiKey) {
+        return validateApiKeyDetailed(currentApiKey);
+      } else {
+        return {
+          isValid: false,
+          message: 'API key is required',
+        };
+      }
+    }
+    
+    // Neither field is configured or we have new values to validate
+    return validateConfiguration({
+      apiKey: currentApiKey,
+      accountId: currentAccountId,
+      region: jsonData?.region,
+    });
+  }, [secureJsonFields, secureJsonData, jsonData]);
 
   return (
     <div>
@@ -159,8 +198,8 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
           labelWidth={14}
           tooltip="Your New Relic API key. This is stored securely and never sent to the frontend."
           required
-          invalid={!!validationErrors.apiKey}
-          error={validationErrors.apiKey}
+          invalid={!!validationErrors.apiKey && !secureJsonFields?.apiKey}
+          error={validationErrors.apiKey && !secureJsonFields?.apiKey ? validationErrors.apiKey : ''}
         >
           <SecretInput
             id="config-editor-api-key"
@@ -173,7 +212,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
             onChange={handleApiKeyChange}
             aria-label="New Relic API Key"
             aria-describedby="api-key-help"
-            aria-invalid={!!validationErrors.apiKey}
+            aria-invalid={!!validationErrors.apiKey && !secureJsonFields?.apiKey}
           />
         </InlineField>
       </InlineFieldRow>
@@ -190,8 +229,8 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
           labelWidth={14}
           tooltip="Your New Relic account ID. This is stored securely and never sent to the frontend."
           required
-          invalid={!!validationErrors.accountID}
-          error={validationErrors.accountID}
+          invalid={!!validationErrors.accountID && !secureJsonFields?.accountID}
+          error={validationErrors.accountID && !secureJsonFields?.accountID ? validationErrors.accountID : ''}
         >
           <SecretInput
             id="config-editor-account-id"
@@ -205,7 +244,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
             type="text"
             aria-label="New Relic Account ID"
             aria-describedby="account-id-help"
-            aria-invalid={!!validationErrors.accountID}
+            aria-invalid={!!validationErrors.accountID && !secureJsonFields?.accountID}
           />
         </InlineField>
       </InlineFieldRow>
@@ -241,7 +280,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
       </div>
 
       {/* Configuration Status */}
-      {configValidation.isValid && secureJsonData?.apiKey && secureJsonData?.accountID && (
+      {configValidation.isValid && (secureJsonFields?.apiKey || secureJsonData?.apiKey) && (secureJsonFields?.accountID || secureJsonData?.accountID) && (
         <Alert title="Configuration Complete" severity="success">
           Your New Relic data source is properly configured and ready to use.
         </Alert>

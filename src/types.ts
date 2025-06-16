@@ -8,6 +8,8 @@ export interface NewRelicQuery extends DataQuery {
   queryText: string;
   /** Optional account ID to override the default configured account */
   accountID?: number;
+  /** Whether to use Grafana's time picker for automatic time range integration */
+  useGrafanaTime?: boolean;
 }
 
 /**

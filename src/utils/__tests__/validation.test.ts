@@ -159,7 +159,13 @@ describe('Validation Utils', () => {
 
   describe('validateApiKeyDetailed', () => {
     it('should validate correct API key format', () => {
-      const validKey = 'NRAK1234567890abcdef1234567890abcdef1234';
+      const validKey = 'NRAK-1234567890ABCDEF1234567890ABCDEF123';
+      const result = validateApiKeyDetailed(validKey);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should validate another correct API key format', () => {
+      const validKey = 'NRAK-1234567890ABCDEF1234567890ABCDEF123';
       const result = validateApiKeyDetailed(validKey);
       expect(result.isValid).toBe(true);
     });
@@ -170,18 +176,46 @@ describe('Validation Utils', () => {
       expect(result.message).toBe('API key is required');
     });
 
-    it('should reject API key with wrong length', () => {
-      const shortKey = 'NRAK123';
+    it('should reject API key without NRAK- prefix', () => {
+      const invalidKey = '1234567890abcdef1234567890abcdef1234';
+      const result = validateApiKeyDetailed(invalidKey);
+      expect(result.isValid).toBe(false);
+      expect(result.message).toBe('New Relic API key must start with "NRAK-"');
+    });
+
+    it('should reject API key that is too short', () => {
+      const shortKey = 'NRAK-123';
       const result = validateApiKeyDetailed(shortKey);
       expect(result.isValid).toBe(false);
-      expect(result.message).toBe('API key must be 40 characters long and contain only alphanumeric characters');
+      expect(result.message).toBe('API key is too short. It should be at least 10 characters long.');
     });
 
     it('should reject API key with special characters', () => {
-      const invalidKey = 'NRAK1234567890abcdef1234567890abcdef123!';
+      const invalidKey = 'NRAK-1234567890abcdef1234567890abcdef123!';
       const result = validateApiKeyDetailed(invalidKey);
       expect(result.isValid).toBe(false);
-      expect(result.message).toBe('API key must be 40 characters long and contain only alphanumeric characters');
+      expect(result.message).toBe('API key contains invalid characters. Only alphanumeric characters are allowed after "NRAK-".');
+    });
+
+    it('should reject API key with hyphens in the key part', () => {
+      const invalidKey = 'NRAK-1234567890-abcdef1234567890abcdef123';
+      const result = validateApiKeyDetailed(invalidKey);
+      expect(result.isValid).toBe(false);
+      expect(result.message).toBe('API key contains invalid characters. Only alphanumeric characters are allowed after "NRAK-".');
+    });
+
+    it('should reject API key that is too long', () => {
+      const longKey = 'NRAK-' + 'A'.repeat(50); // 55 characters total
+      const result = validateApiKeyDetailed(longKey);
+      expect(result.isValid).toBe(false);
+      expect(result.message).toBe('API key length appears invalid. New Relic API keys are typically 30-50 characters long.');
+    });
+
+    it('should reject API key that is too short overall', () => {
+      const shortKey = 'NRAK-' + 'A'.repeat(20); // 25 characters total
+      const result = validateApiKeyDetailed(shortKey);
+      expect(result.isValid).toBe(false);
+      expect(result.message).toBe('API key length appears invalid. New Relic API keys are typically 30-50 characters long.');
     });
 
     it('should handle null/undefined input', () => {
@@ -425,7 +459,7 @@ describe('Validation Utils', () => {
   describe('validateConfiguration', () => {
     it('should validate complete configuration', () => {
       const config = {
-        apiKey: 'NRAK1234567890abcdef1234567890abcdef1234',
+        apiKey: 'NRAK-1234567890ABCDEF1234567890ABCDEF123',
         accountId: '1234567',
         region: 'US',
       };
@@ -441,12 +475,12 @@ describe('Validation Utils', () => {
       };
       const result = validateConfiguration(config);
       expect(result.isValid).toBe(false);
-      expect(result.message).toBe('API key must be 40 characters long and contain only alphanumeric characters');
+      expect(result.message).toBe('New Relic API key must start with "NRAK-"');
     });
 
     it('should reject invalid account ID', () => {
       const config = {
-        apiKey: 'NRAK1234567890abcdef1234567890abcdef1234',
+        apiKey: 'NRAK-1234567890ABCDEF1234567890ABCDEF123',
         accountId: 'invalid',
         region: 'US',
       };
@@ -457,7 +491,7 @@ describe('Validation Utils', () => {
 
     it('should reject invalid region', () => {
       const config = {
-        apiKey: 'NRAK1234567890abcdef1234567890abcdef1234',
+        apiKey: 'NRAK-1234567890ABCDEF1234567890ABCDEF123',
         accountId: '1234567',
         region: 'INVALID',
       };
@@ -468,7 +502,7 @@ describe('Validation Utils', () => {
 
     it('should handle missing region', () => {
       const config = {
-        apiKey: 'NRAK1234567890abcdef1234567890abcdef1234',
+        apiKey: 'NRAK-1234567890ABCDEF1234567890ABCDEF123',
         accountId: '1234567',
       };
       const result = validateConfiguration(config);
