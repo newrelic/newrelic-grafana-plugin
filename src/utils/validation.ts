@@ -1,11 +1,39 @@
 import { ValidationResult } from '../types';
 
 /**
- * Validates a New Relic API key format
+ * Simple boolean validation for API keys (used by some components)
+ * @param apiKey - The API key to validate
+ * @returns Boolean indicating if the API key is valid
+ */
+export function validateApiKey(apiKey: string): boolean {
+  if (typeof apiKey === 'undefined' || apiKey === null) {
+    return false;
+  }
+  
+  if (typeof apiKey !== 'string') {
+    return false;
+  }
+
+  const trimmed = apiKey.trim();
+  
+  // Basic validation - must start with NRAK- and have content after
+  if (!trimmed.startsWith('NRAK-') || trimmed.length < 10) {
+    return false;
+  }
+
+  // Allow alphanumeric characters after NRAK-
+  const keyPart = trimmed.substring(5); // Remove NRAK- prefix
+  const alphanumericRegex = /^[A-Za-z0-9]+$/;
+  
+  return alphanumericRegex.test(keyPart);
+}
+
+/**
+ * Detailed API key validation with error messages
  * @param apiKey - The API key to validate
  * @returns Validation result with success status and optional error message
  */
-export function validateApiKey(apiKey: string): ValidationResult {
+export function validateApiKeyDetailed(apiKey: string): ValidationResult {
   if (!apiKey || typeof apiKey !== 'string') {
     return {
       isValid: false,
@@ -27,11 +55,47 @@ export function validateApiKey(apiKey: string): ValidationResult {
 }
 
 /**
- * Validates a New Relic account ID
+ * Simple boolean validation for account IDs
+ * @param accountId - The account ID to validate
+ * @returns Boolean indicating if the account ID is valid
+ */
+export function validateAccountId(accountId: string | number): boolean {
+  if (typeof accountId === 'undefined' || accountId === null) {
+    return false;
+  }
+
+  // Check for Infinity and NaN directly
+  if (typeof accountId === 'number') {
+    if (!isFinite(accountId) || isNaN(accountId)) {
+      return false;
+    }
+  }
+
+  // If it's a string, check for decimal points first
+  if (typeof accountId === 'string') {
+    // Reject strings with decimal points, but allow scientific notation
+    if (accountId.includes('.') && !accountId.toLowerCase().includes('e')) {
+      return false;
+    }
+  }
+
+  const numericAccountId = typeof accountId === 'string' ? Number(accountId) : accountId;
+
+  // Additional check after conversion
+  if (!isFinite(numericAccountId) || isNaN(numericAccountId) || numericAccountId <= 0) {
+    return false;
+  }
+
+  // New Relic account IDs are typically at least 6 digits
+  return numericAccountId >= 100000;
+}
+
+/**
+ * Detailed account ID validation with error messages
  * @param accountId - The account ID to validate
  * @returns Validation result with success status and optional error message
  */
-export function validateAccountId(accountId: string | number): ValidationResult {
+export function validateAccountIdDetailed(accountId: string | number): ValidationResult {
   if (!accountId) {
     return {
       isValid: false,
@@ -39,7 +103,7 @@ export function validateAccountId(accountId: string | number): ValidationResult 
     };
   }
 
-  const numericAccountId = typeof accountId === 'string' ? parseInt(accountId, 10) : accountId;
+  const numericAccountId = typeof accountId === 'string' ? Number(accountId) : accountId;
 
   if (isNaN(numericAccountId) || numericAccountId <= 0) {
     return {
@@ -81,23 +145,7 @@ export function validateNrqlQuery(query: string): ValidationResult {
     };
   }
 
-  // Basic NRQL validation - must start with SELECT
-  if (!trimmedQuery.toUpperCase().startsWith('SELECT')) {
-    return {
-      isValid: false,
-      message: 'NRQL query must start with SELECT',
-    };
-  }
-
-  // Must contain FROM clause
-  if (!trimmedQuery.toUpperCase().includes(' FROM ')) {
-    return {
-      isValid: false,
-      message: 'NRQL query must contain a FROM clause',
-    };
-  }
-
-  // Check for potentially dangerous operations (basic security)
+  // Check for potentially dangerous operations first (basic security)
   const dangerousPatterns = [
     /DROP\s+/i,
     /DELETE\s+/i,
@@ -114,6 +162,22 @@ export function validateNrqlQuery(query: string): ValidationResult {
         message: 'Query contains potentially dangerous operations',
       };
     }
+  }
+
+  // Basic NRQL validation - must start with SELECT
+  if (!trimmedQuery.toUpperCase().startsWith('SELECT')) {
+    return {
+      isValid: false,
+      message: 'NRQL query must start with SELECT',
+    };
+  }
+
+  // Must contain FROM clause
+  if (!trimmedQuery.toUpperCase().includes(' FROM ')) {
+    return {
+      isValid: false,
+      message: 'NRQL query must contain a FROM clause',
+    };
   }
 
   return { isValid: true };
@@ -165,7 +229,7 @@ export function sanitizeInput(input: string): string {
   return input
     .replace(/[<>]/g, '') // Remove potential HTML tags
     .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+=/gi, '') // Remove event handlers
+    .replace(/\bon\w*\s*=\s*[^>\s]*/gi, '') // Remove event handlers like onclick=
     .trim();
 }
 
@@ -179,12 +243,12 @@ export function validateConfiguration(config: {
   accountId?: string | number;
   region?: string;
 }): ValidationResult {
-  const apiKeyValidation = validateApiKey(config.apiKey || '');
+  const apiKeyValidation = validateApiKeyDetailed(config.apiKey || '');
   if (!apiKeyValidation.isValid) {
     return apiKeyValidation;
   }
 
-  const accountIdValidation = validateAccountId(config.accountId || '');
+  const accountIdValidation = validateAccountIdDetailed(config.accountId || '');
   if (!accountIdValidation.isValid) {
     return accountIdValidation;
   }

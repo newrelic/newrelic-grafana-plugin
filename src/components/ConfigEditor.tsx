@@ -2,7 +2,7 @@ import React, { ChangeEvent, useState, useCallback } from 'react';
 import { InlineField, InlineFieldRow, SecretInput, Select, Alert } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps, SelectableValue } from '@grafana/data';
 import { NewRelicDataSourceOptions, NewRelicSecureJsonData, NEW_RELIC_REGIONS } from '../types';
-import { validateApiKey, validateAccountId, validateConfiguration } from '../utils/validation';
+import { validateApiKeyDetailed, validateAccountIdDetailed, validateConfiguration } from '../utils/validation';
 import { logger } from '../utils/logger';
 
 interface Props extends DataSourcePluginOptionsEditorProps<NewRelicDataSourceOptions, NewRelicSecureJsonData> {}
@@ -26,7 +26,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
    */
   const handleApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const apiKey = event.target.value;
-    const validation = validateApiKey(apiKey);
+    const validation = validateApiKeyDetailed(apiKey);
     
     // Update validation errors
     setValidationErrors(prev => ({
@@ -76,7 +76,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
     const rawValue = event.target.value;
     // Only allow numeric input
     const numericValue = rawValue.replace(/[^0-9]/g, '');
-    const validation = validateAccountId(numericValue);
+    const validation = validateAccountIdDetailed(numericValue);
 
     // Update validation errors
     setValidationErrors(prev => ({

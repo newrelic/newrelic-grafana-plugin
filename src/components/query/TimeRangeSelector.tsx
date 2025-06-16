@@ -23,7 +23,7 @@ export function TimeRangeSelector({ value, onChange, label, tooltip }: TimeRange
         value={selectedRange}
         onChange={(option) => option?.value && onChange(option.value)}
         width={40}
-        aria-label={`Select ${label.toLowerCase()}`}
+        aria-label={`Select ${(label || 'time range').toLowerCase()}`}
       />
     </InlineField>
   );
