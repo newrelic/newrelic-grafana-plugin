@@ -3,9 +3,10 @@ package main
 import (
 	"os"
 
+	"newrelic-grafana-plugin/pkg/plugin"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/plugin"
 )
 
 func main() {

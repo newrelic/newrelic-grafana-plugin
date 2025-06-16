@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"newrelic-grafana-plugin/pkg/dataformatter"
+	"newrelic-grafana-plugin/pkg/models"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/dataformatter"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
 )
 
 // NRQLExecutionError represents an error during NRQL query execution.

@@ -1,16 +1,19 @@
+// Package plugin implements the New Relic Grafana datasource plugin.
+// It provides functionality to query New Relic data and integrate it with Grafana.
 package plugin
 
 import (
 	"context"
 	"fmt"
 
+	"newrelic-grafana-plugin/pkg/client"
+	"newrelic-grafana-plugin/pkg/handler"
+	"newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/validator"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/client"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/handler"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/validator"
 )
 
 var (
@@ -19,24 +22,40 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
+// Datasource implements the New Relic Grafana datasource plugin.
+// It handles data queries, health checks, and resource management.
 type Datasource struct{}
 
-// NewDatasource creates a new datasource instance.
+// NewDatasource creates a new instance of the New Relic datasource.
+// It is called by the Grafana plugin SDK when a new datasource instance is needed.
+//
+// Parameters:
+//   - ctx: The context for the operation
+//   - settings: The datasource instance settings from Grafana
+//
+// Returns:
+//   - instancemgmt.Instance: The new datasource instance
+//   - error: Any error that occurred during creation
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
 
-// Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
-// created. As soon as datasource settings change detected by SDK old datasource instance will
-// be disposed and a new one will be created using NewSampleDatasource factory function.
+// Dispose cleans up resources when a datasource instance is no longer needed.
+// It is called by the Grafana plugin SDK when a datasource instance is being disposed.
 func (d *Datasource) Dispose() {
-	// Clean up datasource instance resources.
-	log.DefaultLogger.Debug("New Relic Datasource instance disposed.")
+	log.DefaultLogger.Debug("New Relic Datasource instance disposed")
 }
 
 // QueryData handles incoming data queries from Grafana.
+// It processes multiple queries in parallel and returns the results.
+//
+// Parameters:
+//   - ctx: The context for the operation
+//   - req: The query data request containing multiple queries
+//
+// Returns:
+//   - *backend.QueryDataResponse: The response containing results for all queries
+//   - error: Any error that occurred during query processing
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	// create response struct
 	response := backend.NewQueryDataResponse()
@@ -66,8 +85,16 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-// CheckHealth handles health checks sent from Grafana to the plugin.
-// This is used for the "Test" button on the datasource configuration page.
+// CheckHealth performs a health check of the datasource.
+// It validates the configuration and tests the connection to New Relic.
+//
+// Parameters:
+//   - ctx: The context for the operation
+//   - req: The health check request
+//
+// Returns:
+//   - *backend.CheckHealthResult: The result of the health check
+//   - error: Any error that occurred during the health check
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	// Step 1: Load plugin settings from Grafana's request
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
@@ -104,5 +131,4 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	}
 	log.DefaultLogger.Debug("Health check completed", "status", healthResult.Status.String(), "message", healthResult.Message)
 	return healthResult, nil
-
 }

@@ -2,9 +2,14 @@
 package validation
 
 import (
+	"context"
 	"fmt"
 
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/config"
+	"newrelic-grafana-plugin/pkg/config"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/newrelic/newrelic-client-go/v2/newrelic"
+	nrErrors "github.com/newrelic/newrelic-client-go/v2/pkg/errors"
 )
 
 // ValidateSettings validates the plugin settings.
@@ -65,4 +70,4 @@ func CheckHealth(ctx context.Context, settings *config.Settings, client *newreli
 		Status:  backend.HealthStatusOk,
 		Message: "Successfully connected to New Relic API.",
 	}, nil
-} 
+}

@@ -4,7 +4,9 @@ package validation
 import (
 	"fmt"
 
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/models"
+	"newrelic-grafana-plugin/pkg/models"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 // ValidateQuery validates a query model.
@@ -43,4 +45,4 @@ func ValidateQueryRequest(request *backend.QueryDataRequest) error {
 	}
 
 	return nil
-} 
+}

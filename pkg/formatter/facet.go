@@ -4,18 +4,20 @@ package formatter
 
 import (
 	"fmt"
+	"time"
+
+	"newrelic-grafana-plugin/pkg/constant"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/constants"
 )
 
 // isFacetedCountQuery checks if the results represent a faceted count query
 func isFacetedCountQuery(results *nrdb.NRDBResultContainer) bool {
 	return len(results.Results) > 0 &&
-		results.Results[0][constants.CountFieldName] != nil &&
-		results.Results[0][constants.FacetFieldName] != nil
+		results.Results[0][constant.CountFieldName] != nil &&
+		results.Results[0][constant.FacetFieldName] != nil
 }
 
 // formatFacetedCountQuery formats results from a faceted count query
@@ -59,7 +61,7 @@ func extractFacetedData(results *nrdb.NRDBResultContainer, facetNames []string) 
 
 	for i, result := range results.Results {
 		// Get count
-		if countValue, ok := result[constants.CountFieldName].(float64); ok {
+		if countValue, ok := result[constant.CountFieldName].(float64); ok {
 			counts[i] = countValue
 		}
 
@@ -72,7 +74,7 @@ func extractFacetedData(results *nrdb.NRDBResultContainer, facetNames []string) 
 
 // extractFacetValues extracts facet values from a single result
 func extractFacetValues(result map[string]interface{}, facetNames []string, facetFields map[string][]string, index int) {
-	if facetArray, ok := result[constants.FacetFieldName].([]interface{}); ok {
+	if facetArray, ok := result[constant.FacetFieldName].([]interface{}); ok {
 		for j, facetValue := range facetArray {
 			if j < len(facetNames) {
 				if strVal, ok := facetValue.(string); ok {
@@ -84,13 +86,13 @@ func extractFacetValues(result map[string]interface{}, facetNames []string, face
 		}
 	} else if result["facet"] != nil && len(facetNames) > 0 {
 		// Handle single facet value case
-		facetFields[facetNames[0]][index] = fmt.Sprintf("%v", result[constants.FacetFieldName])
+		facetFields[facetNames[0]][index] = fmt.Sprintf("%v", result[constant.FacetFieldName])
 	}
 }
 
 // createFacetTableFrame creates a table frame for faceted count queries
 func createFacetTableFrame(facetNames []string, counts []float64, facetFields map[string][]string) *data.Frame {
-	facetFrame := data.NewFrame(constants.FacetedFrameName)
+	facetFrame := data.NewFrame(constant.FacetedFrameName)
 
 	// Add facet fields
 	for _, facetName := range facetNames {
@@ -99,7 +101,7 @@ func createFacetTableFrame(facetNames []string, counts []float64, facetFields ma
 	}
 
 	// Add count field
-	facetFrame.Fields = append(facetFrame.Fields, data.NewField(constants.CountFieldName, nil, counts))
+	facetFrame.Fields = append(facetFrame.Fields, data.NewField(constant.CountFieldName, nil, counts))
 
 	// Set visualization preference
 	facetFrame.Meta = &data.FrameMeta{
@@ -111,7 +113,7 @@ func createFacetTableFrame(facetNames []string, counts []float64, facetFields ma
 
 // createFacetTimeSeriesFrame creates a time series frame for faceted count queries
 func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFields map[string][]string, query backend.DataQuery) *data.Frame {
-	timeSeriesFrame := data.NewFrame(constants.FacetedTimeSeriesFrameName)
+	timeSeriesFrame := data.NewFrame(constant.FacetedTimeSeriesFrameName)
 
 	// Create time points
 	timePoints := make([]time.Time, len(counts))
@@ -121,7 +123,7 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 
 	// Add time field
 	timeSeriesFrame.Fields = append(timeSeriesFrame.Fields,
-		data.NewField(constants.TimeFieldName, nil, timePoints))
+		data.NewField(constant.TimeFieldName, nil, timePoints))
 
 	// Add facet fields
 	for _, facetName := range facetNames {
@@ -131,7 +133,7 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 
 	// Add count field
 	timeSeriesFrame.Fields = append(timeSeriesFrame.Fields,
-		data.NewField(constants.CountFieldName, nil, counts))
+		data.NewField(constant.CountFieldName, nil, counts))
 
 	// Set visualization preference
 	timeSeriesFrame.Meta = &data.FrameMeta{
@@ -139,4 +141,4 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 	}
 
 	return timeSeriesFrame
-} 
+}

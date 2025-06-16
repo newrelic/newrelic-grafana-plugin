@@ -1,4 +1,4 @@
-module source.datanerd.us/after/newrelic-grafana-plugin
+module newrelic-grafana-plugin
 
 go 1.24.1
 
@@ -17,7 +17,7 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.10.0
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
 	github.com/valyala/fastjson v1.6.4 // indirect
 )

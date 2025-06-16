@@ -5,10 +5,11 @@ package formatter
 import (
 	"time"
 
+	"newrelic-grafana-plugin/pkg/constant"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/constants"
 )
 
 // formatStandardQuery formats standard query results into a Grafana data frame.
@@ -16,7 +17,7 @@ func formatStandardQuery(results *nrdb.NRDBResultContainer, query backend.DataQu
 	resp := &backend.DataResponse{}
 
 	// Create a new frame
-	frame := data.NewFrame(constants.StandardResponseFrameName)
+	frame := data.NewFrame(constant.StandardResponseFrameName)
 
 	// Extract field names from the first result
 	fieldNames := extractFieldNames(results)
@@ -37,7 +38,7 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 	fieldNames := []string{}
 	if len(results.Results) > 0 {
 		for fieldName := range results.Results[0] {
-			if fieldName != constants.TimestampFieldName {
+			if fieldName != constant.TimestampFieldName {
 				fieldNames = append(fieldNames, fieldName)
 			}
 		}
@@ -49,13 +50,13 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery) *data.Field {
 	timePoints := make([]time.Time, len(results.Results))
 	for i, result := range results.Results {
-		if timestamp, ok := result[constants.TimestampFieldName].(float64); ok {
+		if timestamp, ok := result[constant.TimestampFieldName].(float64); ok {
 			timePoints[i] = time.Unix(int64(timestamp), 0)
 		} else {
 			timePoints[i] = query.TimeRange.From
 		}
 	}
-	return data.NewField(constants.TimeFieldName, nil, timePoints)
+	return data.NewField(constant.TimeFieldName, nil, timePoints)
 }
 
 // addDataFields adds data fields to the frame
@@ -65,6 +66,27 @@ func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNa
 		for i, result := range results.Results {
 			values[i] = result[fieldName]
 		}
-		frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
+
+		// Convert values to appropriate type
+		convertedValues := make([]float64, len(values))
+		for i, v := range values {
+			switch val := v.(type) {
+			case float64:
+				convertedValues[i] = val
+			case int:
+				convertedValues[i] = float64(val)
+			case int64:
+				convertedValues[i] = float64(val)
+			default:
+				convertedValues[i] = 0
+			}
+		}
+
+		frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, convertedValues))
 	}
-} 
+
+	// Set visualization type
+	frame.Meta = &data.FrameMeta{
+		PreferredVisualization: data.VisTypeGraph,
+	}
+}

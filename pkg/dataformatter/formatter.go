@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"newrelic-grafana-plugin/pkg/constant"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
-	"source.datanerd.us/after/newrelic-grafana-plugin/pkg/constant"
 )
 
 // IsCountQuery checks if the NRDB result container represents a single count query.
