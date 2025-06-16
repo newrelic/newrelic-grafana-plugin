@@ -1,45 +1,110 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryEditorProps } from '@grafana/data';
+import { InlineField, InlineFieldRow, TextArea, Button } from '@grafana/ui';
 import { DataSource } from '../datasource';
-import { Input, Button } from '@grafana/ui';
-import { MyDataSourceOptions, MyQuery } from '../types';
+import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
+import { NRQLQueryBuilder } from './NRQLQueryBuilder';
 
-type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
+type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
-export const QueryEditor: React.FC<Props> = ({ query, onChange, onRunQuery }) => {
-  const [queryText, setQueryText] = useState(query.queryText || '');
-  const [responseData] = useState<string | null>(null);
-
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setQueryText(value);
-    onChange({ ...query, queryText: value });
+export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const [useQueryBuilder, setUseQueryBuilder] = useState(false);
+  
+  // Migration logic: handle old queries that might have 'nrql' field
+  const migrateQuery = (q: any): NewRelicQuery => {
+    if (q.nrql && !q.queryText) {
+      console.log('QueryEditor: Migrating old nrql field to queryText:', q.nrql);
+      const migratedQuery = { ...q, queryText: q.nrql };
+      delete migratedQuery.nrql; // Remove old field
+      onChange(migratedQuery); // Update the query immediately
+      return migratedQuery;
+    }
+    
+    if (q.nrql && q.queryText) {
+      console.log('QueryEditor: Removing duplicate nrql field, keeping queryText:', q.queryText);
+      const cleanedQuery = { ...q };
+      delete cleanedQuery.nrql; // Remove old field
+      onChange(cleanedQuery); // Update the query immediately
+      return cleanedQuery;
+    }
+    
+    return q;
   };
 
-  const handleSubmit = () => {
-    // Trigger query execution handled by Grafana QueryData infrastructure
-    onRunQuery();
+  // Apply migration on component mount and when query changes
+  const currentQuery = migrateQuery(query);
+  const [rawNRQL, setRawNRQL] = useState(currentQuery.queryText || '');
+
+  // Update rawNRQL when query changes externally
+  useEffect(() => {
+    const migratedQuery = migrateQuery(query);
+    if (migratedQuery.queryText !== rawNRQL) {
+      setRawNRQL(migratedQuery.queryText || '');
+    }
+  }, [query.queryText, query]);
+
+  const handleNRQLChange = (queryText: string) => {
+    setRawNRQL(queryText);
+    onChange({ ...currentQuery, queryText });
+  };
+
+  const handleBuilderQueryChange = (queryText: string) => {
+    setRawNRQL(queryText); // Update rawNRQL to keep in sync
+    onChange({ ...currentQuery, queryText });
+  };
+
+  const toggleQueryBuilder = () => {
+    setUseQueryBuilder(!useQueryBuilder);
+    if (!useQueryBuilder) {
+      // When switching to query builder, ensure the query is in a valid format
+      if (!currentQuery.queryText || currentQuery.queryText.trim() === '') {
+        const defaultQuery = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
+        setRawNRQL(defaultQuery);
+        onChange({ ...currentQuery, queryText: defaultQuery });
+      }
+    }
   };
 
   return (
     <div>
-      <div className="gf-form">
-        <Input
-          value={queryText}
-          onChange={handleInputChange}
-          width={40}
-          placeholder="Enter query"
+      <InlineFieldRow>
+        <InlineField>
+          <Button
+            variant={useQueryBuilder ? 'primary' : 'secondary'}
+            onClick={toggleQueryBuilder}
+          >
+            {useQueryBuilder ? 'Switch to Text Editor' : 'Use Query Builder'}
+          </Button>
+        </InlineField>
+        <InlineField>
+          <Button
+            variant="primary"
+            onClick={onRunQuery}
+          >
+            Run Query
+          </Button>
+        </InlineField>
+      </InlineFieldRow>
+
+      {useQueryBuilder ? (
+        <NRQLQueryBuilder
+          value={currentQuery.queryText || ''}
+          onChange={handleBuilderQueryChange}
+          onRunQuery={onRunQuery}
         />
-        <Button onClick={handleSubmit} variant="primary">
-          Submit
-        </Button>
-      </div>
-      {responseData && (
-        <div style={{ marginTop: '10px', whiteSpace: 'pre-wrap' }}>
-          <strong>Response Data:</strong>
-          <pre>{responseData}</pre> {/* Display the response data */}
+      ) : (
+        <div style={{ position: 'relative' }}>
+          <TextArea
+            value={rawNRQL}
+            onChange={e => handleNRQLChange(e.currentTarget.value)}
+            placeholder="Enter NRQL query..."
+            rows={5}
+          />
+          <Button onClick={onRunQuery} icon="play" variant="primary" style={{ marginTop: 8 }}>
+            Run Query
+          </Button>
         </div>
       )}
     </div>
   );
-};
+}

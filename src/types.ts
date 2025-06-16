@@ -1,14 +1,15 @@
-import { DataSourceJsonData } from '@grafana/data';
-import { DataQuery } from '@grafana/schema';
+import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
-export interface MyQuery extends DataQuery {
-  queryText?: string;
-  constant: number;
+export interface NewRelicQuery extends DataQuery {
+  queryText: string;
+  accountID?: number;
 }
 
-export const DEFAULT_QUERY: Partial<MyQuery> = {
-  constant: 6.5,
-};
+export interface NewRelicDataSourceOptions extends DataSourceJsonData {
+  apiKey?: string;
+  accountId?: number;
+  region?: string;
+}
 
 export interface DataPoint {
   Time: number;
@@ -20,16 +21,8 @@ export interface DataSourceResponse {
 }
 
 /**
- * These are options configured for each DataSource instance
- */
-export interface MyDataSourceOptions extends DataSourceJsonData {
-  path?: string;
-}
-
-/**
  * Value that is used in the backend, but never sent over HTTP to the frontend
  */
-export interface MySecureJsonData {
+export interface NewRelicSecureJsonData {
   apiKey?: string;
-  accountID ?: string;
 }
