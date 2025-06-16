@@ -44,7 +44,25 @@ type SecretPluginSettings struct {
 
 // LoadPluginSettings unmarshals the JSON data and decrypted secure JSON data
 // from Grafana's DataSourceInstanceSettings into a PluginSettings struct.
-func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
+// func LoadPluginSettings(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
+// 	settings := PluginSettings{}
+// 	err := json.Unmarshal(source.JSONData, &settings)
+// 	if err != nil {
+// 		return nil, &PluginSettingsError{Msg: "could not unmarshal PluginSettings JSON", Err: err}
+// 	}
+
+// 	secretSettings, err := loadSecretPluginSettings(source.DecryptedSecureJSONData)
+
+// 	if err != nil {
+// 		return nil, &PluginSettingsError{Err: err}
+// 	}
+
+// 	settings.Secrets = secretSettings
+
+// 	return &settings, nil
+// }
+
+var LoadPluginSettings = func(source backend.DataSourceInstanceSettings) (*PluginSettings, error) {
 	settings := PluginSettings{}
 	err := json.Unmarshal(source.JSONData, &settings)
 	if err != nil {

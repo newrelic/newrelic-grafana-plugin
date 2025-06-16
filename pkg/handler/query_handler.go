@@ -53,7 +53,7 @@ func ExecuteNRQLQuery(ctx context.Context, client *newrelic.NewRelic, accountID 
 }
 
 // handleQuery processes a single Grafana data query.
-func HandleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
+func HandleQueryProcess(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 
 	// Parse the query JSON
@@ -84,5 +84,10 @@ func HandleQuery(ctx context.Context, nrClient *newrelic.NewRelic, config *model
 	}
 
 	return dataformatter.FormatQueryResults(results, query)
+
+}
+
+var HandleQuery = func(ctx context.Context, nrClient *newrelic.NewRelic, config *models.PluginSettings, query backend.DataQuery) *backend.DataResponse {
+	return HandleQueryProcess(ctx, nrClient, config, query)
 
 }

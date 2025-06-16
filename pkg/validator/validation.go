@@ -12,7 +12,7 @@ import (
 )
 
 // ValidatePluginSettings checks the essential settings for the plugin.
-func ValidatePluginSettings(config *models.PluginSettings) error {
+func ValidatePluginSettingsOperation(config *models.PluginSettings) error {
 	if config == nil || config.Secrets == nil {
 		return fmt.Errorf("plugin settings or secrets are not loaded")
 	}
@@ -23,6 +23,11 @@ func ValidatePluginSettings(config *models.PluginSettings) error {
 		return fmt.Errorf("new relic account ID is missing or invalid in plugin settings")
 	}
 	return nil
+}
+
+var ValidatePluginSettings = func(config *models.PluginSettings) error {
+	// This function can be mocked in tests to simulate different validation scenarios.
+	return ValidatePluginSettingsOperation(config)
 }
 
 // CheckHealth performs a comprehensive health check based on plugin settings
