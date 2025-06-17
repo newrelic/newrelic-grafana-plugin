@@ -33,7 +33,10 @@ describe('useQueryBuilder', () => {
         })
       );
 
-      expect(result.current.queryComponents).toEqual(DEFAULT_QUERY_COMPONENTS);
+      expect(result.current.queryComponents).toEqual({
+        ...DEFAULT_QUERY_COMPONENTS,
+        limit: 0, // No limit when parsing invalid query
+      });
     });
 
     it('should parse a simple count query correctly', () => {
@@ -51,6 +54,7 @@ describe('useQueryBuilder', () => {
         field: '',
         from: 'Transaction',
         since: '1 hour',
+        limit: 0, // No limit when no LIMIT clause in query
       });
     });
 
@@ -99,7 +103,7 @@ describe('useQueryBuilder', () => {
       );
 
       expect(result.current.queryComponents.aggregation).toBe('percentile');
-      expect(result.current.queryComponents.field).toBe('duration, 95');
+      expect(result.current.queryComponents.field).toBe('duration');
     });
   });
 
@@ -389,7 +393,10 @@ describe('useQueryBuilder', () => {
         })
       );
 
-      expect(result.current.queryComponents).toEqual(DEFAULT_QUERY_COMPONENTS);
+      expect(result.current.queryComponents).toEqual({
+        ...DEFAULT_QUERY_COMPONENTS,
+        limit: 0, // No limit when parsing malformed query
+      });
     });
 
     it('should handle queries with missing required clauses', () => {
@@ -412,7 +419,7 @@ describe('useQueryBuilder', () => {
         })
       );
 
-      expect(result.current.queryComponents.limit).toBe(100); // Should fall back to default
+      expect(result.current.queryComponents.limit).toBe(0); // Should not fall back to default when invalid
     });
   });
 

@@ -22,7 +22,10 @@ function parseNRQLQuery(query: string): QueryComponents {
   }
 
   try {
-    const components: QueryComponents = { ...DEFAULT_QUERY_COMPONENTS };
+    const components: QueryComponents = { 
+      ...DEFAULT_QUERY_COMPONENTS,
+      limit: 0  // Start with no limit - only set if explicitly found in query
+    };
     
     // Parse SELECT clause with improved regex
     const selectMatch = query.match(/SELECT\s+(.+?)\s+FROM/i);
@@ -126,6 +129,7 @@ function parseNRQLQuery(query: string): QueryComponents {
         components.limit = limitValue;
       }
     }
+    // If no LIMIT clause found, leave it as 0 (no limit)
 
     return components;
   } catch (error) {
