@@ -86,8 +86,9 @@ func formatSimpleCountQuery(results *nrdb.NRDBResultContainer, query backend.Dat
 func createCountTimeSeriesFrame(count float64, query backend.DataQuery) *data.Frame {
 	graphFrame := data.NewFrame(utils.CountTimeSeriesFrameName)
 
-	// Add time points spanning the query range
-	timePoints := []time.Time{query.TimeRange.From, query.TimeRange.To}
+	// Add time points using current time (since we removed time range processing)
+	now := time.Now()
+	timePoints := []time.Time{now.Add(-time.Hour), now}
 	graphFrame.Fields = append(graphFrame.Fields,
 		data.NewField("time", nil, timePoints))
 
@@ -208,10 +209,11 @@ func createFacetTableFrame(facetNames []string, counts []float64, facetFields ma
 func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFields map[string][]string, query backend.DataQuery) *data.Frame {
 	timeSeriesFrame := data.NewFrame(utils.FacetedTimeSeriesFrameName)
 
-	// Create time points
+	// Create time points using current time
+	now := time.Now()
 	timePoints := make([]time.Time, len(counts))
 	for i := range timePoints {
-		timePoints[i] = query.TimeRange.From
+		timePoints[i] = now
 	}
 
 	// Add time field
@@ -278,6 +280,8 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 // createTimeField creates a time field from result timestamps
 func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery) []time.Time {
 	times := make([]time.Time, len(results.Results))
+	now := time.Now()
+
 	for i, result := range results.Results {
 		// First check for standard timestamp field
 		if ts, ok := result[utils.TimestampFieldName].(float64); ok {
@@ -286,8 +290,8 @@ func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery)
 			// Handle New Relic TIMESERIES data which uses beginTimeSeconds
 			times[i] = time.Unix(int64(beginTs), 0)
 		} else {
-			// Fallback to query start time
-			times[i] = query.TimeRange.From
+			// Fallback to current time instead of query time range
+			times[i] = now
 		}
 	}
 	return times
