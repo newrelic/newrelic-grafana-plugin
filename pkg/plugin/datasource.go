@@ -4,7 +4,9 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"newrelic-grafana-plugin/pkg/client"
 	"newrelic-grafana-plugin/pkg/handler"
@@ -21,6 +23,7 @@ import (
 var (
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
+	_ backend.CallResourceHandler   = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
@@ -136,4 +139,64 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 
 	// Return the result received from the health package directly to Grafana.
 	return healthResult, nil
+}
+
+// CallResource handles incoming resource requests from Grafana.
+// It processes the request and returns the appropriate response.
+//
+// Parameters:
+//   - ctx: The context for the operation
+//   - req: The resource request
+//   - sender: The response sender
+//
+// Returns:
+//   - error: Any error that occurred during resource processing
+func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+	log.DefaultLogger.Debug("Datasource.CallResource: Handling resource request", "path", req.Path)
+
+	switch req.Path {
+	case "health":
+		return d.handleHealthResource(ctx, req, sender)
+	default:
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusNotFound,
+			Body:   []byte(`{"error": "Resource not found"}`),
+		})
+	}
+}
+
+// handleHealthResource handles the /health resource endpoint
+func (d *Datasource) handleHealthResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+	// Call the same health check logic used by CheckHealth
+	healthResult, err := health.ExecuteHealthCheck(ctx, *req.PluginContext.DataSourceInstanceSettings)
+	if err != nil {
+		log.DefaultLogger.Error("Resource health check failed internally", "error", err)
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body:   []byte(`{"status": "ERROR", "message": "Internal health check error"}`),
+		})
+	}
+
+	// Convert health result to JSON response
+	response := map[string]interface{}{
+		"status":  healthResult.Status.String(),
+		"message": healthResult.Message,
+	}
+
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		log.DefaultLogger.Error("Failed to marshal health response", "error", err)
+		return sender.Send(&backend.CallResourceResponse{
+			Status: http.StatusInternalServerError,
+			Body:   []byte(`{"status": "ERROR", "message": "Failed to marshal response"}`),
+		})
+	}
+
+	return sender.Send(&backend.CallResourceResponse{
+		Status: http.StatusOK,
+		Body:   responseBody,
+		Headers: map[string][]string{
+			"Content-Type": {"application/json"},
+		},
+	})
 }

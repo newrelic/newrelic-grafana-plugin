@@ -115,19 +115,28 @@ export class DataSource extends DataSourceWithBackend<NewRelicQuery, NewRelicDat
     try {
       logger.info('Testing data source connection');
       
-      // The actual connection test is handled by the backend
-      // This method can be extended to perform additional frontend validation
+      // Call the backend health check endpoint
+      const response = await this.getResource('health');
       
-      return {
-        status: 'success',
-        message: 'Data source connection test initiated. Check the backend logs for results.',
-      };
+      if (response?.status === 'OK') {
+        logger.info('Data source connection test successful: ' + (response.message || 'Connected'));
+        return {
+          status: 'success',
+          message: response.message || '✅ Successfully connected to New Relic!',
+        };
+      } else {
+        logger.error('Data source connection test failed: ' + (response?.message || 'Unknown error'));
+        return {
+          status: 'error',
+          message: response?.message || 'Connection test failed. Please check your configuration.',
+        };
+      }
     } catch (error) {
       logger.error('Data source test failed', error as Error);
       
       return {
         status: 'error',
-        message: 'Failed to test data source connection. Please check your configuration.',
+        message: error instanceof Error ? error.message : 'Failed to test data source connection. Please check your configuration.',
       };
     }
   }

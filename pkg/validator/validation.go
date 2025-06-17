@@ -84,6 +84,6 @@ func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor 
 
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
-		Message: fmt.Sprintf("✅ Successfully connected to New Relic API! Account ID %d is accessible and returned %d data point(s). Test query executed successfully.", settings.Secrets.AccountId, len(result.Results)),
+		Message: fmt.Sprintf("✅ New Relic connection successful (Account ID: %d)", settings.Secrets.AccountId),
 	}, nil
 }
