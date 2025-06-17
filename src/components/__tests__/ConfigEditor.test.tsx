@@ -79,7 +79,7 @@ describe('ConfigEditor', () => {
       expect(screen.getByText(/Choose US for accounts in the United States/)).toBeInTheDocument();
     });
 
-    it('should show success alert when configuration is complete', () => {
+    it('should not show configuration complete alert (handled by Save & Test)', () => {
       const propsWithData: MockProps = {
         ...defaultProps,
         options: {
@@ -93,8 +93,9 @@ describe('ConfigEditor', () => {
 
       render(<ConfigEditor {...propsWithData} />);
 
-      expect(screen.getByText('Configuration Complete')).toBeInTheDocument();
-      expect(screen.getByText('Your New Relic data source is properly configured and ready to use.')).toBeInTheDocument();
+      // Configuration feedback is now handled by Save & Test button
+      expect(screen.queryByText('Configuration Complete')).not.toBeInTheDocument();
+      expect(screen.queryByText('Your New Relic data source is properly configured and ready to use.')).not.toBeInTheDocument();
     });
   });
 

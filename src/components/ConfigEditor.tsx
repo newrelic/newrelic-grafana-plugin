@@ -1,5 +1,5 @@
-import React, { ChangeEvent, useState, useCallback, useMemo } from 'react';
-import { InlineField, InlineFieldRow, SecretInput, Select, Alert, Button } from '@grafana/ui';
+import React, { ChangeEvent, useState, useCallback } from 'react';
+import { InlineField, InlineFieldRow, SecretInput, Select } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps, SelectableValue } from '@grafana/data';
 import { NewRelicDataSourceOptions, NewRelicSecureJsonData, NEW_RELIC_REGIONS } from '../types';
 import { validateApiKeyDetailed, validateAccountIdDetailed } from '../utils/validation';
@@ -211,28 +211,6 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
     }
   }, [validateAllFields]);
 
-  // Check if configuration is complete and valid
-  const isConfigurationComplete = useMemo(() => {
-    const hasApiKey = !!(secureJsonFields?.apiKey || secureJsonData?.apiKey);
-    const hasAccountId = !!(secureJsonFields?.accountID || secureJsonData?.accountID);
-    
-    // Only consider complete if both fields have values AND no validation errors
-    if (!hasApiKey || !hasAccountId) {
-      return false;
-    }
-    
-    // If fields are already configured (secureJsonFields), assume they're valid
-    if (secureJsonFields?.apiKey && secureJsonFields?.accountID) {
-      return true;
-    }
-    
-    // For new values, check if there are any validation errors
-    const hasApiKeyError = !!validationErrors.apiKey;
-    const hasAccountIdError = !!validationErrors.accountID;
-    
-    return !hasApiKeyError && !hasAccountIdError;
-  }, [secureJsonFields, secureJsonData, validationErrors]);
-
   return (
     <div>
       {/* API Key Field */}
@@ -324,13 +302,6 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
       <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '16px' }}>
         Choose US for accounts in the United States, or EU for accounts in Europe.
       </div>
-
-      {/* Configuration Status - only show when complete */}
-      {isConfigurationComplete && (
-        <Alert title="Configuration Complete" severity="success">
-          Your New Relic data source is properly configured and ready to use.
-        </Alert>
-      )}
     </div>
   );
 }
