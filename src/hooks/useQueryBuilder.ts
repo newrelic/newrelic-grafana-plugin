@@ -160,34 +160,22 @@ function buildNRQLQuery(components: QueryComponents, useGrafanaTime = false): st
 
   let query = `SELECT ${selectClause} FROM ${components.from}`;
   
-  // Handle WHERE clause carefully to avoid duplicates
+  // Handle WHERE clause - exclude Grafana time variables from WHERE
   const userWhere = components.where && components.where.trim();
-  const needsGrafanaTime = useGrafanaTime;
-  
-  if (userWhere || needsGrafanaTime) {
-    const conditions = [];
-    
-    // Add user WHERE conditions (excluding any existing Grafana time conditions)
-    if (userWhere) {
-      conditions.push(userWhere);
-    }
-    
-    // Add Grafana time conditions only if needed and not already present
-    if (needsGrafanaTime) {
-      conditions.push('timestamp >= $__from AND timestamp <= $__to');
-    }
-    
-    if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(' AND ')}`;
-    }
+  if (userWhere) {
+    query += ` WHERE ${userWhere}`;
   }
   
   if (components.facet && components.facet.length > 0) {
     query += ` FACET ${components.facet.join(', ')}`;
   }
   
-  // Only add SINCE/UNTIL if not using Grafana time
-  if (!needsGrafanaTime) {
+  // Handle time clauses
+  if (useGrafanaTime) {
+    // Use SINCE/UNTIL with Grafana time variables
+    query += ' SINCE $__from UNTIL $__to';
+  } else {
+    // Use manual SINCE/UNTIL clauses
     if (components.since && components.since.trim()) {
       query += ` SINCE ${components.since} ago`;
     }

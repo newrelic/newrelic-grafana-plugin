@@ -125,19 +125,9 @@ export function buildNRQLWithTimeIntegration(
     query = query.replace(/\s*UNTIL\s+[^)]*ago\s*/gi, ' ');
     query = query.replace(/\s+/g, ' ').trim(); // Clean up multiple spaces
 
-    // Add Grafana time variables to WHERE clause
-    const hasWhere = /\bWHERE\b/i.test(query);
-    
-    if (hasWhere) {
-      // Add to existing WHERE clause
-      query = query.replace(
-        /(\bWHERE\b\s+)/i,
-        '$1timestamp >= $__from AND timestamp <= $__to AND '
-      );
-    } else {
-      // Add new WHERE clause
-      query = `${query} WHERE timestamp >= $__from AND timestamp <= $__to`;
-    }
+    // Use SINCE/UNTIL clauses with Grafana timestamp variables
+    // New Relic expects SINCE/UNTIL with millisecond Unix timestamps
+    query = `${query} SINCE $__from UNTIL $__to`;
     
     return query;
   } else if (customTimeClause) {

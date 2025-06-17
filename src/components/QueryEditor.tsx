@@ -142,7 +142,14 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       updatedQueryText = buildNRQLWithTimeIntegration(rawNRQL, true);
     } else {
       // Remove Grafana time variables and use manual time clauses
+      // Handle the new SINCE/UNTIL format
       updatedQueryText = rawNRQL.replace(
+        /SINCE\s+\$__from\s+UNTIL\s+\$__to/gi,
+        'SINCE 1 hour ago'
+      );
+      
+      // Also handle any remaining old WHERE format (for backwards compatibility)
+      updatedQueryText = updatedQueryText.replace(
         /WHERE\s+timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
         'SINCE 1 hour ago'
       );
@@ -181,7 +188,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       // When switching to query builder, ensure the query is in a valid format
       if (!query.queryText || query.queryText.trim() === '') {
         const defaultQuery = useGrafanaTime 
-          ? 'SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to'
+          ? 'SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to'
           : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
         setRawNRQL(defaultQuery);
         onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
@@ -290,7 +297,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             value={rawNRQL}
             onChange={(e) => handleNRQLChange(e.currentTarget.value)}
             placeholder={useGrafanaTime 
-              ? "SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to"
+              ? "SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to"
               : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
             }
             rows={4}
