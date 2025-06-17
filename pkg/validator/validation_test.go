@@ -88,7 +88,12 @@ func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, 
 		return nil, m.queryErr
 	}
 	if m.results == nil {
-		return &nrdb.NRDBResultContainer{}, nil
+		// Return a mock result with one data point to simulate a successful query
+		return &nrdb.NRDBResultContainer{
+			Results: []nrdb.NRDBResult{
+				{"count": 1.0},
+			},
+		}, nil
 	}
 	return m.results, nil
 }
@@ -112,7 +117,7 @@ func TestCheckHealth(t *testing.T) {
 			executor: &mockNRDBExecutor{},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusOk,
-				Message: "Successfully connected to New Relic API.",
+				Message: "✅ Successfully connected to New Relic API! Account ID 123456 is accessible and returned 1 data point(s). Test query executed successfully.",
 			},
 			wantErr: false,
 		},
@@ -129,7 +134,7 @@ func TestCheckHealth(t *testing.T) {
 			},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "An error occurred with connecting to NewRelic. Could not connect to NewRelic. This usually happens when the API key is incorrect.",
+				Message: "Authentication failed for account ID 123456. Please verify your API key is correct and has access to this account.",
 			},
 			wantErr: false,
 		},
@@ -146,7 +151,24 @@ func TestCheckHealth(t *testing.T) {
 			},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "Failed to connect to New Relic API or authenticate. Error: connection error",
+				Message: "Failed to connect to New Relic API (Account ID: 123456). Error: connection error",
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty results",
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					ApiKey:    "test-key",
+					AccountId: 123456,
+				},
+			},
+			executor: &mockNRDBExecutor{
+				results: &nrdb.NRDBResultContainer{Results: []nrdb.NRDBResult{}},
+			},
+			want: &backend.CheckHealthResult{
+				Status:  backend.HealthStatusError,
+				Message: "New Relic API returned an empty response for account ID 123456. Please verify the account has data or the account ID is correct.",
 			},
 			wantErr: false,
 		},

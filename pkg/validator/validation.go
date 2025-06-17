@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/errors"
+	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 )
 
 // ValidatePluginSettings validates the plugin settings
@@ -52,25 +53,37 @@ func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor 
 		}, nil
 	}
 
-	// Try a simple query to check connectivity
-	_, err := executor.QueryWithContext(ctx, settings.Secrets.AccountId, "SELECT 1")
+	// Try a comprehensive test query to check connectivity and account access
+	// This query is more realistic than "SELECT 1" and tests both API connectivity
+	// and account-level permissions similar to "SELECT 1 FROM dual" in Oracle
+	testQuery := "SELECT count(*) FROM Transaction SINCE 1 hour ago LIMIT 1"
+
+	result, err := executor.QueryWithContext(ctx, settings.Secrets.AccountId, nrdb.NRQL(testQuery))
 	if err != nil {
 		switch err.(type) {
 		case *errors.UnauthorizedError:
 			return &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "An error occurred with connecting to NewRelic. Could not connect to NewRelic. This usually happens when the API key is incorrect.",
+				Message: fmt.Sprintf("Authentication failed for account ID %d. Please verify your API key is correct and has access to this account.", settings.Secrets.AccountId),
 			}, nil
 		default:
 			return &backend.CheckHealthResult{
 				Status:  backend.HealthStatusError,
-				Message: "Failed to connect to New Relic API or authenticate. Error: " + err.Error(),
+				Message: fmt.Sprintf("Failed to connect to New Relic API (Account ID: %d). Error: %s", settings.Secrets.AccountId, err.Error()),
 			}, nil
 		}
 	}
 
+	// Verify we got a valid response structure
+	if result == nil || len(result.Results) == 0 {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("New Relic API returned an empty response for account ID %d. Please verify the account has data or the account ID is correct.", settings.Secrets.AccountId),
+		}, nil
+	}
+
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
-		Message: "Successfully connected to New Relic API.",
+		Message: fmt.Sprintf("✅ Successfully connected to New Relic API! Account ID %d is accessible and returned %d data point(s). Test query executed successfully.", settings.Secrets.AccountId, len(result.Results)),
 	}, nil
 }
