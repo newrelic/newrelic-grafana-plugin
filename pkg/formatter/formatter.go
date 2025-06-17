@@ -1,14 +1,14 @@
-// Package dataformatter handles the conversion of New Relic API responses
+// Package formatter handles the conversion of New Relic API responses
 // into Grafana data frames. It supports different query types including
 // count queries, faceted queries, and standard time series data.
-package dataformatter
+package formatter
 
 import (
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"newrelic-grafana-plugin/pkg/constant"
+	"newrelic-grafana-plugin/pkg/utils"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -48,15 +48,15 @@ func FormatQueryResults(results *nrdb.NRDBResultContainer, query backend.DataQue
 // isSimpleCountQuery checks if the results represent a simple count query
 func isSimpleCountQuery(results *nrdb.NRDBResultContainer) bool {
 	return len(results.Results) == 1 &&
-		results.Results[0][constant.CountFieldName] != nil &&
-		results.Results[0][constant.FacetFieldName] == nil
+		results.Results[0][utils.CountFieldName] != nil &&
+		results.Results[0][utils.FacetFieldName] == nil
 }
 
 // isFacetedCountQuery checks if the results represent a faceted count query
 func isFacetedCountQuery(results *nrdb.NRDBResultContainer) bool {
 	return len(results.Results) > 0 &&
-		results.Results[0][constant.CountFieldName] != nil &&
-		results.Results[0][constant.FacetFieldName] != nil
+		results.Results[0][utils.CountFieldName] != nil &&
+		results.Results[0][utils.FacetFieldName] != nil
 }
 
 // formatSimpleCountQuery formats results from a simple count query
@@ -84,7 +84,7 @@ func formatSimpleCountQuery(results *nrdb.NRDBResultContainer, query backend.Dat
 
 // createCountTimeSeriesFrame creates a time series frame for count queries
 func createCountTimeSeriesFrame(count float64, query backend.DataQuery) *data.Frame {
-	graphFrame := data.NewFrame(constant.CountTimeSeriesFrameName)
+	graphFrame := data.NewFrame(utils.CountTimeSeriesFrameName)
 
 	// Add time points spanning the query range
 	timePoints := []time.Time{query.TimeRange.From, query.TimeRange.To}
@@ -107,7 +107,7 @@ func createCountTimeSeriesFrame(count float64, query backend.DataQuery) *data.Fr
 // extractCountValue safely extracts a count value from a result
 func extractCountValue(result map[string]interface{}) float64 {
 	count := float64(0)
-	if countValue, ok := result[constant.CountFieldName].(float64); ok {
+	if countValue, ok := result[utils.CountFieldName].(float64); ok {
 		count = countValue
 	}
 	return count
@@ -154,7 +154,7 @@ func extractFacetedData(results *nrdb.NRDBResultContainer, facetNames []string) 
 
 	for i, result := range results.Results {
 		// Get count
-		if countValue, ok := result[constant.CountFieldName].(float64); ok {
+		if countValue, ok := result[utils.CountFieldName].(float64); ok {
 			counts[i] = countValue
 		}
 
@@ -167,7 +167,7 @@ func extractFacetedData(results *nrdb.NRDBResultContainer, facetNames []string) 
 
 // extractFacetValues extracts facet values from a single result
 func extractFacetValues(result map[string]interface{}, facetNames []string, facetFields map[string][]string, index int) {
-	if facetArray, ok := result[constant.FacetFieldName].([]interface{}); ok {
+	if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok {
 		for j, facetValue := range facetArray {
 			if j < len(facetNames) {
 				if strVal, ok := facetValue.(string); ok {
@@ -179,13 +179,13 @@ func extractFacetValues(result map[string]interface{}, facetNames []string, face
 		}
 	} else if result["facet"] != nil && len(facetNames) > 0 {
 		// Handle single facet value case
-		facetFields[facetNames[0]][index] = fmt.Sprintf("%v", result[constant.FacetFieldName])
+		facetFields[facetNames[0]][index] = fmt.Sprintf("%v", result[utils.FacetFieldName])
 	}
 }
 
 // createFacetTableFrame creates a table frame for faceted count queries
 func createFacetTableFrame(facetNames []string, counts []float64, facetFields map[string][]string) *data.Frame {
-	facetFrame := data.NewFrame(constant.FacetedFrameName)
+	facetFrame := data.NewFrame(utils.FacetedFrameName)
 
 	// Add facet fields
 	for _, facetName := range facetNames {
@@ -194,7 +194,7 @@ func createFacetTableFrame(facetNames []string, counts []float64, facetFields ma
 	}
 
 	// Add count field
-	facetFrame.Fields = append(facetFrame.Fields, data.NewField(constant.CountFieldName, nil, counts))
+	facetFrame.Fields = append(facetFrame.Fields, data.NewField(utils.CountFieldName, nil, counts))
 
 	// Set visualization preference
 	facetFrame.Meta = &data.FrameMeta{
@@ -206,7 +206,7 @@ func createFacetTableFrame(facetNames []string, counts []float64, facetFields ma
 
 // createFacetTimeSeriesFrame creates a time series frame for faceted count queries
 func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFields map[string][]string, query backend.DataQuery) *data.Frame {
-	timeSeriesFrame := data.NewFrame(constant.FacetedTimeSeriesFrameName)
+	timeSeriesFrame := data.NewFrame(utils.FacetedTimeSeriesFrameName)
 
 	// Create time points
 	timePoints := make([]time.Time, len(counts))
@@ -216,7 +216,7 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 
 	// Add time field
 	timeSeriesFrame.Fields = append(timeSeriesFrame.Fields,
-		data.NewField(constant.TimeFieldName, nil, timePoints))
+		data.NewField(utils.TimeFieldName, nil, timePoints))
 
 	// Add facet fields
 	for _, facetName := range facetNames {
@@ -226,7 +226,7 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 
 	// Add count field
 	timeSeriesFrame.Fields = append(timeSeriesFrame.Fields,
-		data.NewField(constant.CountFieldName, nil, counts))
+		data.NewField(utils.CountFieldName, nil, counts))
 
 	// Set visualization preference
 	timeSeriesFrame.Meta = &data.FrameMeta{
@@ -239,14 +239,14 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 // formatStandardQuery formats standard query results (time series or other data)
 func formatStandardQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
-	frame := data.NewFrame(constant.StandardResponseFrameName)
+	frame := data.NewFrame(utils.StandardResponseFrameName)
 
 	// Extract field names
 	fieldNames := extractFieldNames(results)
 
 	// Add time field
 	times := createTimeField(results, query)
-	frame.Fields = append(frame.Fields, data.NewField(constant.TimeFieldName, nil, times))
+	frame.Fields = append(frame.Fields, data.NewField(utils.TimeFieldName, nil, times))
 
 	// Add data fields
 	addDataFields(frame, results, fieldNames)
@@ -260,7 +260,7 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 	fieldNamesMap := make(map[string]struct{})
 	for _, result := range results.Results {
 		for key := range result {
-			if key != constant.TimestampFieldName {
+			if key != utils.TimestampFieldName {
 				fieldNamesMap[key] = struct{}{}
 			}
 		}
@@ -278,7 +278,7 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery) []time.Time {
 	times := make([]time.Time, len(results.Results))
 	for i, result := range results.Results {
-		if ts, ok := result[constant.TimestampFieldName].(float64); ok {
+		if ts, ok := result[utils.TimestampFieldName].(float64); ok {
 			times[i] = time.Unix(int64(ts/1000), 0)
 		} else {
 			times[i] = query.TimeRange.From

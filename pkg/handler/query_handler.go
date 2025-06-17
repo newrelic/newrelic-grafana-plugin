@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"newrelic-grafana-plugin/pkg/dataformatter"
+	"newrelic-grafana-plugin/pkg/formatter"
 	"newrelic-grafana-plugin/pkg/models"
 	"newrelic-grafana-plugin/pkg/nrdbiface"
 	"newrelic-grafana-plugin/pkg/utils"
@@ -95,5 +95,5 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return resp
 	}
 
-	return dataformatter.FormatQueryResults(results, query)
+	return formatter.FormatQueryResults(results, query)
 }

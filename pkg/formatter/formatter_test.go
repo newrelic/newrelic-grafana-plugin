@@ -1,10 +1,9 @@
-package dataformatter
+package formatter
 
 import (
+	"newrelic-grafana-plugin/pkg/utils"
 	"testing"
 	"time"
-
-	"newrelic-grafana-plugin/pkg/constant"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -81,7 +80,7 @@ func TestFormatQueryResults(t *testing.T) {
 				require.Len(t, resp.Frames, 2)
 				assert.Equal(t, "count", resp.Frames[0].Name)
 				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
-				assert.Equal(t, constant.CountTimeSeriesFrameName, resp.Frames[1].Name)
+				assert.Equal(t, utils.CountTimeSeriesFrameName, resp.Frames[1].Name)
 				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
 			},
 		},
@@ -105,9 +104,9 @@ func TestFormatQueryResults(t *testing.T) {
 			query: query,
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 2)
-				assert.Equal(t, constant.FacetedFrameName, resp.Frames[0].Name)
+				assert.Equal(t, utils.FacetedFrameName, resp.Frames[0].Name)
 				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
-				assert.Equal(t, constant.FacetedTimeSeriesFrameName, resp.Frames[1].Name)
+				assert.Equal(t, utils.FacetedTimeSeriesFrameName, resp.Frames[1].Name)
 				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
 			},
 		},
@@ -124,7 +123,7 @@ func TestFormatQueryResults(t *testing.T) {
 			query: query,
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 1)
-				assert.Equal(t, constant.StandardResponseFrameName, resp.Frames[0].Name)
+				assert.Equal(t, utils.StandardResponseFrameName, resp.Frames[0].Name)
 			},
 		},
 		{

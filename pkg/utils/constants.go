@@ -1,7 +1,7 @@
-// Package constant defines shared constants used throughout the New Relic Grafana plugin.
+// Package utils defines shared constants used throughout the New Relic Grafana plugin.
 // These constants are used for field names in NRDB query results and Grafana DataFrames,
 // as well as for naming different types of data frames.
-package constant
+package utils
 
 const (
 	// Field names used in NRDB query results and Grafana DataFrames
