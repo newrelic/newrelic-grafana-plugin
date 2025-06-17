@@ -48,3 +48,8 @@ dist/go_plugin_build_manifest
 
 
 .DS_Store
+
+
+coverage.out
+# Coverage report for unit tests
+coverage.html
