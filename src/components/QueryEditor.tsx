@@ -274,13 +274,6 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         </div>
       </div>
 
-      {/* Validation Error Alert */}
-      {validationError && (
-        <Alert title="Query Validation Error" severity="error" style={{ marginBottom: '8px' }}>
-          {validationError}
-        </Alert>
-      )}
-
       {/* Query Editor Content */}
       {useQueryBuilder ? (
         <div role="region" aria-label="NRQL Query Builder">
@@ -304,7 +297,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             invalid={!!validationError}
             data-testid="nrql-textarea"
           />
-          
+
           {/* Help Text */}
           <div id="nrql-help" style={{ 
             fontSize: '11px', 
@@ -321,23 +314,54 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             }
           </div>
           
-          {/* Query Status - only show for text editor */}
-          {query.queryText && !validationError && (
-            <div style={{ 
-              fontSize: '11px', 
-              color: '#28a745', 
-              marginTop: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}>
-              <Icon name="check" size="xs" />
-              Query is valid and ready to execute
-              {useGrafanaTime && hasGrafanaTimeVariables(query.queryText) && 
-                ' (with dashboard time integration)'
-              }
-            </div>
-          )}
+          {/* Unified Status Indicator - appears in same location for both success and error */}
+          <div style={{ 
+            marginTop: '8px',
+            minHeight: '20px', // Reserve space to prevent layout shift
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            {validationError ? (
+              // Error state - same styling as success but red
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                color: '#d63031'
+              }}>
+                <Icon name="exclamation-triangle" size="sm" />
+                <span>{validationError}</span>
+              </div>
+            ) : query.queryText?.trim() && !isValidating ? (
+              // Success state - subtle green
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                color: '#00b894'
+              }}>
+                <Icon name="check" size="sm" />
+                <span>
+                  Query is valid and ready to execute.
+                </span>
+              </div>
+            ) : isValidating ? (
+              // Validating state
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                color: '#6c757d'
+              }}>
+                <Icon name="spinner" size="sm" />
+                <span>Validating query...</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
