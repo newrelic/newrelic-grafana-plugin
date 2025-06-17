@@ -14,6 +14,8 @@ interface Props extends DataSourcePluginOptionsEditorProps<NewRelicDataSourceOpt
 export function ConfigEditor({ onOptionsChange, options }: Props) {
   const { secureJsonFields, secureJsonData, jsonData } = options;
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [hasInteracted, setHasInteracted] = useState<Record<string, boolean>>({});
+  const [hasSaveAttempted, setHasSaveAttempted] = useState(false);
 
   // Region options for the select dropdown
   const regionOptions: Array<SelectableValue<string>> = [
@@ -22,19 +24,12 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
   ];
 
   /**
-   * Validates and updates the API key
+   * Validates and updates the API key (without showing errors while typing)
    */
   const handleApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const apiKey = event.target.value;
-    const validation = validateApiKeyDetailed(apiKey);
     
-    // Update validation errors
-    setValidationErrors(prev => ({
-      ...prev,
-      apiKey: validation.isValid ? '' : validation.message || 'Invalid API key',
-    }));
-
-    // Update the options
+    // Update the options immediately but don't validate yet
     onOptionsChange({
       ...options,
       secureJsonData: {
@@ -42,17 +37,32 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         apiKey,
       },
     });
+  }, [options, secureJsonData, onOptionsChange]);
+
+  /**
+   * Handles API key field blur for validation
+   */
+  const handleApiKeyBlur = useCallback(() => {
+    setHasInteracted(prev => ({ ...prev, apiKey: true }));
+    const apiKey = secureJsonData?.apiKey || '';
+    const validation = validateApiKeyDetailed(apiKey);
+    
+    setValidationErrors(prev => ({
+      ...prev,
+      apiKey: validation.isValid ? '' : validation.message || 'Invalid API key',
+    }));
 
     if (!validation.isValid) {
       logger.warn('API key validation failed', { error: validation.message });
     }
-  }, [options, secureJsonData, onOptionsChange]);
+  }, [secureJsonData]);
 
   /**
    * Resets the API key field
    */
   const handleApiKeyReset = useCallback(() => {
     setValidationErrors(prev => ({ ...prev, apiKey: '' }));
+    setHasInteracted(prev => ({ ...prev, apiKey: false }));
     
     onOptionsChange({
       ...options,
@@ -70,39 +80,45 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
   }, [options, secureJsonFields, secureJsonData, onOptionsChange]);
 
   /**
-   * Validates and updates the account ID
+   * Validates and updates the account ID (without showing errors while typing)
    */
   const handleAccountIdChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const rawValue = event.target.value;
-    // Only allow numeric input
-    const numericValue = rawValue.replace(/[^0-9]/g, '');
-    const validation = validateAccountIdDetailed(numericValue);
+    const accountId = event.target.value;
+    
+    // Update the options immediately but don't validate yet
+    onOptionsChange({
+      ...options,
+      secureJsonData: {
+        ...secureJsonData,
+        accountID: accountId,
+      },
+    });
+  }, [options, secureJsonData, onOptionsChange]);
 
-    // Update validation errors
+  /**
+   * Handles account ID field blur for validation
+   */
+  const handleAccountIdBlur = useCallback(() => {
+    setHasInteracted(prev => ({ ...prev, accountID: true }));
+    const accountId = secureJsonData?.accountID || '';
+    const validation = validateAccountIdDetailed(accountId.toString());
+    
     setValidationErrors(prev => ({
       ...prev,
       accountID: validation.isValid ? '' : validation.message || 'Invalid account ID',
     }));
 
-    // Update the options
-    onOptionsChange({
-      ...options,
-      secureJsonData: {
-        ...secureJsonData,
-        accountID: numericValue,
-      },
-    });
-
     if (!validation.isValid) {
       logger.warn('Account ID validation failed', { error: validation.message });
     }
-  }, [options, secureJsonData, onOptionsChange]);
+  }, [secureJsonData]);
 
   /**
    * Resets the account ID field
    */
   const handleAccountIdReset = useCallback(() => {
     setValidationErrors(prev => ({ ...prev, accountID: '' }));
+    setHasInteracted(prev => ({ ...prev, accountID: false }));
     
     onOptionsChange({
       ...options,
@@ -136,61 +152,85 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
     logger.info('Region changed', { region });
   }, [options, jsonData, onOptionsChange]);
 
-  // Validate overall configuration
-  const configValidation = useMemo(() => {
-    // If API key and account ID are already configured (secureJsonFields), don't show validation errors
-    const isApiKeyConfigured = !!secureJsonFields?.apiKey;
-    const isAccountIdConfigured = !!secureJsonFields?.accountID;
+  /**
+   * Validates all fields when save/test is attempted
+   */
+  const validateAllFields = useCallback(() => {
+    setHasSaveAttempted(true);
+    setHasInteracted({ apiKey: true, accountID: true });
     
-    // Only validate if we have actual values to validate (when user is entering new values)
-    const currentApiKey = secureJsonData?.apiKey || '';
-    const currentAccountId = secureJsonData?.accountID || '';
+    const apiKey = secureJsonData?.apiKey || '';
+    const accountID = secureJsonData?.accountID || '';
     
-    // If fields are configured but we don't have current values, assume they're valid
-    if (isApiKeyConfigured && !currentApiKey) {
-      // API key is configured, check other fields
-      if (isAccountIdConfigured && !currentAccountId) {
-        // Both are configured, configuration is valid
-        return { isValid: true };
-      } else if (!isAccountIdConfigured && currentAccountId) {
-        // API key configured, validate new account ID
-        return validateAccountIdDetailed(currentAccountId);
-      } else if (!isAccountIdConfigured && !currentAccountId) {
-        // API key configured, account ID needed
-        return {
-          isValid: false,
-          message: 'Account ID is required',
-        };
-      }
-    } else if (isAccountIdConfigured && !currentAccountId) {
-      // Account ID is configured, validate API key
-      if (currentApiKey) {
-        return validateApiKeyDetailed(currentApiKey);
-      } else {
-        return {
-          isValid: false,
-          message: 'API key is required',
-        };
-      }
+    const apiKeyValidation = validateApiKeyDetailed(apiKey);
+    const accountIdValidation = validateAccountIdDetailed(accountID.toString());
+    
+    setValidationErrors({
+      apiKey: apiKeyValidation.isValid ? '' : apiKeyValidation.message || 'Invalid API key',
+      accountID: accountIdValidation.isValid ? '' : accountIdValidation.message || 'Invalid account ID',
+    });
+    
+    return apiKeyValidation.isValid && accountIdValidation.isValid;
+  }, [secureJsonData]);
+
+  // Attach validation to the form submission
+  React.useEffect(() => {
+    const form = document.querySelector('form');
+    if (form) {
+      const handleSubmit = (e: Event) => {
+        const isValid = validateAllFields();
+        if (!isValid) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      };
+      
+      form.addEventListener('submit', handleSubmit);
+      return () => form.removeEventListener('submit', handleSubmit);
+    }
+  }, [validateAllFields]);
+
+  // Also handle Save & test button clicks
+  React.useEffect(() => {
+    const saveButton = document.querySelector('button[type="submit"], button[form]');
+    if (saveButton) {
+      const handleClick = (e: Event) => {
+        const isValid = validateAllFields();
+        if (!isValid) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      };
+      
+      saveButton.addEventListener('click', handleClick);
+      return () => saveButton.removeEventListener('click', handleClick);
+    }
+  }, [validateAllFields]);
+
+  // Check if configuration is complete and valid
+  const isConfigurationComplete = useMemo(() => {
+    const hasApiKey = !!(secureJsonFields?.apiKey || secureJsonData?.apiKey);
+    const hasAccountId = !!(secureJsonFields?.accountID || secureJsonData?.accountID);
+    
+    // Only consider complete if both fields have values AND no validation errors
+    if (!hasApiKey || !hasAccountId) {
+      return false;
     }
     
-    // Neither field is configured or we have new values to validate
-    return validateConfiguration({
-      apiKey: currentApiKey,
-      accountId: currentAccountId,
-      region: jsonData?.region,
-    });
-  }, [secureJsonFields, secureJsonData, jsonData]);
+    // If fields are already configured (secureJsonFields), assume they're valid
+    if (secureJsonFields?.apiKey && secureJsonFields?.accountID) {
+      return true;
+    }
+    
+    // For new values, check if there are any validation errors
+    const hasApiKeyError = !!validationErrors.apiKey;
+    const hasAccountIdError = !!validationErrors.accountID;
+    
+    return !hasApiKeyError && !hasAccountIdError;
+  }, [secureJsonFields, secureJsonData, validationErrors]);
 
   return (
     <div>
-      {/* Configuration validation alert */}
-      {!configValidation.isValid && (
-        <Alert title="Configuration Error" severity="error">
-          {configValidation.message}
-        </Alert>
-      )}
-
       {/* API Key Field */}
       <InlineFieldRow>
         <InlineField
@@ -198,8 +238,8 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
           labelWidth={14}
           tooltip="Your New Relic API key. This is stored securely and never sent to the frontend."
           required
-          invalid={!!validationErrors.apiKey && !secureJsonFields?.apiKey}
-          error={validationErrors.apiKey && !secureJsonFields?.apiKey ? validationErrors.apiKey : ''}
+          invalid={!!validationErrors.apiKey && (hasInteracted.apiKey || hasSaveAttempted) && !secureJsonFields?.apiKey}
+          error={validationErrors.apiKey && (hasInteracted.apiKey || hasSaveAttempted) && !secureJsonFields?.apiKey ? validationErrors.apiKey : ''}
         >
           <SecretInput
             id="config-editor-api-key"
@@ -210,9 +250,10 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
             width={40}
             onReset={handleApiKeyReset}
             onChange={handleApiKeyChange}
+            onBlur={handleApiKeyBlur}
             aria-label="New Relic API Key"
             aria-describedby="api-key-help"
-            aria-invalid={!!validationErrors.apiKey && !secureJsonFields?.apiKey}
+            aria-invalid={!!validationErrors.apiKey && (hasInteracted.apiKey || hasSaveAttempted) && !secureJsonFields?.apiKey}
           />
         </InlineField>
       </InlineFieldRow>
@@ -229,8 +270,8 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
           labelWidth={14}
           tooltip="Your New Relic account ID. This is stored securely and never sent to the frontend."
           required
-          invalid={!!validationErrors.accountID && !secureJsonFields?.accountID}
-          error={validationErrors.accountID && !secureJsonFields?.accountID ? validationErrors.accountID : ''}
+          invalid={!!validationErrors.accountID && (hasInteracted.accountID || hasSaveAttempted) && !secureJsonFields?.accountID}
+          error={validationErrors.accountID && (hasInteracted.accountID || hasSaveAttempted) && !secureJsonFields?.accountID ? validationErrors.accountID : ''}
         >
           <SecretInput
             id="config-editor-account-id"
@@ -241,10 +282,11 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
             width={40}
             onReset={handleAccountIdReset}
             onChange={handleAccountIdChange}
+            onBlur={handleAccountIdBlur}
             type="text"
             aria-label="New Relic Account ID"
             aria-describedby="account-id-help"
-            aria-invalid={!!validationErrors.accountID && !secureJsonFields?.accountID}
+            aria-invalid={!!validationErrors.accountID && (hasInteracted.accountID || hasSaveAttempted) && !secureJsonFields?.accountID}
           />
         </InlineField>
       </InlineFieldRow>
@@ -279,8 +321,8 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         Choose US for accounts in the United States, or EU for accounts in Europe.
       </div>
 
-      {/* Configuration Status */}
-      {configValidation.isValid && (secureJsonFields?.apiKey || secureJsonData?.apiKey) && (secureJsonFields?.accountID || secureJsonData?.accountID) && (
+      {/* Configuration Status - only show when complete */}
+      {isConfigurationComplete && (
         <Alert title="Configuration Complete" severity="success">
           Your New Relic data source is properly configured and ready to use.
         </Alert>
