@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { InlineFieldRow, Input, InlineField, Select, Alert } from '@grafana/ui';
 import { useQueryBuilder } from '../../hooks/useQueryBuilder';
-import { NRQL_AGGREGATION_FUNCTIONS } from '../../types';
 
 interface NRQLQueryBuilderProps {
   /** The current query value */

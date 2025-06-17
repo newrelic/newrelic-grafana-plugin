@@ -1,7 +1,6 @@
 import React from 'react';
 import { Select, InlineField } from '@grafana/ui';
 import { AGGREGATION_FUNCTIONS } from '../../types/query/constants';
-import { AggregationFunction } from '../../types/query/types';
 
 interface AggregationSelectorProps {
   value: string;

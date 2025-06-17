@@ -1,8 +1,8 @@
 import React, { ChangeEvent, useState, useCallback, useMemo } from 'react';
-import { InlineField, InlineFieldRow, SecretInput, Select, Alert } from '@grafana/ui';
+import { InlineField, InlineFieldRow, SecretInput, Select, Alert, Button } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps, SelectableValue } from '@grafana/data';
 import { NewRelicDataSourceOptions, NewRelicSecureJsonData, NEW_RELIC_REGIONS } from '../types';
-import { validateApiKeyDetailed, validateAccountIdDetailed, validateConfiguration } from '../utils/validation';
+import { validateApiKeyDetailed, validateAccountIdDetailed } from '../utils/validation';
 import { logger } from '../utils/logger';
 
 interface Props extends DataSourcePluginOptionsEditorProps<NewRelicDataSourceOptions, NewRelicSecureJsonData> {}
@@ -181,12 +181,14 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         const isValid = validateAllFields();
         if (!isValid) {
           e.preventDefault();
-          e.stopPropagation();
+          logger.warn('Form submission prevented due to validation errors');
         }
       };
-      
+
       form.addEventListener('submit', handleSubmit);
-      return () => form.removeEventListener('submit', handleSubmit);
+      return () => {
+        form.removeEventListener('submit', handleSubmit);
+      };
     }
   }, [validateAllFields]);
 
@@ -198,12 +200,14 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         const isValid = validateAllFields();
         if (!isValid) {
           e.preventDefault();
-          e.stopPropagation();
+          logger.warn('Save & test prevented due to validation errors');
         }
       };
-      
+
       saveButton.addEventListener('click', handleClick);
-      return () => saveButton.removeEventListener('click', handleClick);
+      return () => {
+        saveButton.removeEventListener('click', handleClick);
+      };
     }
   }, [validateAllFields]);
 

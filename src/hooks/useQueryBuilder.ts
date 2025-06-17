@@ -220,7 +220,7 @@ export function useQueryBuilder({ initialQuery, onChange, useGrafanaTime = false
       limit: 0, // No limit initially
     };
   });
-  const [validationResult, setValidationResult] = useState<QueryValidationResult>({ isValid: true });
+  const [validationResult] = useState<QueryValidationResult>({ isValid: true });
   
   const lastQueryRef = useRef<string>(initialQuery || '');
   const isUpdatingRef = useRef<boolean>(false);

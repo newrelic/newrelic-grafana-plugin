@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { InlineField, InlineFieldRow, Button, Alert, Switch, ButtonGroup, Icon, TextArea, Tooltip } from '@grafana/ui';
+import { Button, Switch, ButtonGroup, Icon, TextArea, Tooltip } from '@grafana/ui';
 import { DataSource } from '../datasource';
-import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
+import { NewRelicQuery, NewRelicDataSourceOptions, ValidationResult } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
 import { validateNrqlQuery } from '../utils/validation';
 import { logger } from '../utils/logger';

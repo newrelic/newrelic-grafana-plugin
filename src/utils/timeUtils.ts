@@ -2,7 +2,7 @@
  * Time utilities for handling Grafana time picker integration with NRQL queries
  */
 
-import { TimeRange, rangeUtil } from '@grafana/data';
+import { TimeRange } from '@grafana/data';
 
 /**
  * Converts Grafana time range to NRQL SINCE/UNTIL clauses

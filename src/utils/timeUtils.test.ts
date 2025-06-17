@@ -11,15 +11,6 @@ import {
 import { TimeRange, dateTime } from '@grafana/data';
 
 describe('timeUtils', () => {
-  const mockTimeRange: TimeRange = {
-    from: dateTime('2024-01-01T10:00:00Z'),
-    to: dateTime('2024-01-01T11:00:00Z'),
-    raw: {
-      from: 'now-1h',
-      to: 'now'
-    }
-  };
-
   describe('hasGrafanaTimeVariables', () => {
     it('should detect Grafana time variables', () => {
       expect(hasGrafanaTimeVariables('SELECT count(*) FROM Transaction WHERE timestamp >= $__from')).toBe(true);

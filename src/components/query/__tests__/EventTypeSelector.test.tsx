@@ -133,7 +133,7 @@ describe('EventTypeSelector', () => {
       render(<EventTypeSelector {...defaultProps} value="Span" />);
       expect(screen.getByText('Span')).toBeInTheDocument();
 
-      const { rerender } = render(<EventTypeSelector {...defaultProps} value="Metric" />);
+      render(<EventTypeSelector {...defaultProps} value="Metric" />);
       expect(screen.getByText('Metric')).toBeInTheDocument();
     });
 
