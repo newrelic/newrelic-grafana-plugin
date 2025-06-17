@@ -260,7 +260,8 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 	fieldNamesMap := make(map[string]struct{})
 	for _, result := range results.Results {
 		for key := range result {
-			if key != utils.TimestampFieldName {
+			// Exclude timestamp fields and New Relic TIMESERIES fields from data fields
+			if key != utils.TimestampFieldName && key != "beginTimeSeconds" && key != "endTimeSeconds" {
 				fieldNamesMap[key] = struct{}{}
 			}
 		}
@@ -278,9 +279,14 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery) []time.Time {
 	times := make([]time.Time, len(results.Results))
 	for i, result := range results.Results {
+		// First check for standard timestamp field
 		if ts, ok := result[utils.TimestampFieldName].(float64); ok {
 			times[i] = time.Unix(int64(ts/1000), 0)
+		} else if beginTs, ok := result["beginTimeSeconds"].(float64); ok {
+			// Handle New Relic TIMESERIES data which uses beginTimeSeconds
+			times[i] = time.Unix(int64(beginTs), 0)
 		} else {
+			// Fallback to query start time
 			times[i] = query.TimeRange.From
 		}
 	}

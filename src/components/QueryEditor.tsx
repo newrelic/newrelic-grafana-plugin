@@ -293,7 +293,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
               ? "SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to"
               : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
             }
-            rows={8}
+            rows={4}
             invalid={!!validationError}
             data-testid="nrql-textarea"
           />

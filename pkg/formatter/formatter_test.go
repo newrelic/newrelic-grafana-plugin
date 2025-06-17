@@ -136,6 +136,40 @@ func TestFormatQueryResults(t *testing.T) {
 				require.Empty(t, resp.Frames)
 			},
 		},
+		{
+			name: "timeseries query with beginTimeSeconds",
+			results: &nrdb.NRDBResultContainer{
+				Results: []nrdb.NRDBResult{
+					{
+						"beginTimeSeconds": float64(1750148571),
+						"endTimeSeconds":   float64(1750148631),
+						"count":            3.0,
+					},
+					{
+						"beginTimeSeconds": float64(1750148631),
+						"endTimeSeconds":   float64(1750148691),
+						"count":            3.0,
+					},
+				},
+			},
+			query: query,
+			validate: func(t *testing.T, resp *backend.DataResponse) {
+				require.Len(t, resp.Frames, 1)
+				frame := resp.Frames[0]
+				require.Len(t, frame.Fields, 2) // time and count fields
+
+				// Verify time field uses beginTimeSeconds
+				timeField := frame.Fields[0]
+				assert.Equal(t, "time", timeField.Name)
+				times := timeField.At(0).(time.Time)
+				expectedTime := time.Unix(1750148571, 0)
+				assert.Equal(t, expectedTime, times)
+
+				// Verify count field is present
+				countField := frame.Fields[1]
+				assert.Equal(t, "count", countField.Name)
+			},
+		},
 	}
 
 	for _, tt := range tests {
