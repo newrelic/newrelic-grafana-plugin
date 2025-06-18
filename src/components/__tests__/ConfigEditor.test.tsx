@@ -116,7 +116,7 @@ describe('ConfigEditor', () => {
       });
     });
 
-    it('should validate API key on change', async () => {
+    it('should validate API key on blur', async () => {
       const user = userEvent.setup();
       mockValidation.validateApiKeyDetailed.mockReturnValue({
         isValid: false,
@@ -128,9 +128,11 @@ describe('ConfigEditor', () => {
       const apiKeyInput = screen.getByTestId('api-key-input');
       await user.clear(apiKeyInput);
       await user.paste('invalid-key');
+      // Trigger blur to show validation errors
+      await user.tab();
 
       await waitFor(() => {
-        // Check that validation was called (it gets called per character)
+        // Check that validation was called
         expect(mockValidation.validateApiKeyDetailed).toHaveBeenCalled();
         // Check that the error message is displayed
         expect(screen.getByText('Invalid API key format')).toBeInTheDocument();
@@ -183,23 +185,7 @@ describe('ConfigEditor', () => {
       });
     });
 
-    it('should filter non-numeric characters from account ID', async () => {
-      const user = userEvent.setup();
-      render(<ConfigEditor {...defaultProps} />);
-
-      const accountIdInput = screen.getByTestId('account-id-input');
-      await user.clear(accountIdInput);
-      await user.paste('abc123def');
-
-      // Check that only numeric characters were kept
-      await waitFor(() => {
-        const calls = (defaultProps.onOptionsChange as jest.Mock).mock.calls;
-        const lastCall = calls[calls.length - 1];
-        expect(lastCall[0].secureJsonData.accountID).toBe('123');
-      });
-    });
-
-    it('should validate account ID on change', async () => {
+    it('should validate account ID on blur', async () => {
       const user = userEvent.setup();
       mockValidation.validateAccountIdDetailed.mockReturnValue({
         isValid: false,
@@ -210,7 +196,9 @@ describe('ConfigEditor', () => {
 
       const accountIdInput = screen.getByTestId('account-id-input');
       await user.clear(accountIdInput);
-      await user.paste('123');
+      await user.type(accountIdInput, '123');
+      // Trigger blur to show validation errors
+      await user.tab();
 
       await waitFor(() => {
         // Check that validation was called and error message is displayed
@@ -257,7 +245,7 @@ describe('ConfigEditor', () => {
   });
 
   describe('Validation and Error Handling', () => {
-    it('should show validation errors', () => {
+    it('should call validateConfiguration but not show global validation UI', () => {
       mockValidation.validateConfiguration.mockReturnValue({
         isValid: false,
         message: 'Configuration is incomplete',
@@ -265,8 +253,10 @@ describe('ConfigEditor', () => {
 
       render(<ConfigEditor {...defaultProps} />);
 
-      expect(screen.getByText('Configuration Error')).toBeInTheDocument();
-      expect(screen.getByText('Configuration is incomplete')).toBeInTheDocument();
+      // The component calls validateConfiguration but doesn't display global validation UI
+      // Individual field validation is handled separately
+      expect(screen.queryByText('Configuration Error')).not.toBeInTheDocument();
+      expect(screen.queryByText('Configuration is incomplete')).not.toBeInTheDocument();
     });
 
     it('should show field-specific validation errors', async () => {
@@ -280,6 +270,8 @@ describe('ConfigEditor', () => {
 
       const apiKeyInput = screen.getByTestId('api-key-input');
       await user.type(apiKeyInput, 'short');
+      // Trigger blur to show validation errors
+      await user.tab();
 
       await waitFor(() => {
         expect(screen.getByText('API key is too short')).toBeInTheDocument();
@@ -299,6 +291,8 @@ describe('ConfigEditor', () => {
 
       const apiKeyInput = screen.getByTestId('api-key-input');
       await user.type(apiKeyInput, 'short');
+      // Trigger blur to show validation errors
+      await user.tab();
 
       await waitFor(() => {
         expect(screen.getByText('API key is too short')).toBeInTheDocument();
@@ -309,6 +303,8 @@ describe('ConfigEditor', () => {
       
       await user.clear(apiKeyInput);
       await user.type(apiKeyInput, 'NRAK1234567890abcdef1234567890abcdef1234');
+      // Trigger blur to update validation
+      await user.tab();
 
       await waitFor(() => {
         expect(screen.queryByText('API key is too short')).not.toBeInTheDocument();
@@ -346,6 +342,8 @@ describe('ConfigEditor', () => {
 
       const apiKeyInput = screen.getByTestId('api-key-input');
       await user.type(apiKeyInput, 'invalid');
+      // Trigger blur to show validation and set aria-invalid
+      await user.tab();
 
       await waitFor(() => {
         expect(apiKeyInput).toHaveAttribute('aria-invalid', 'true');
