@@ -476,9 +476,9 @@ describe('useQueryBuilder', () => {
         result.current.updateComponents({ where: 'appName = "test"' });
       });
 
-      // Should build query with Grafana time variables
+      // Should build query with Grafana time variables using SINCE/UNTIL format
       expect(onChange).toHaveBeenCalledWith(
-        'SELECT count(*) FROM Transaction WHERE appName = "test" AND timestamp >= $__from AND timestamp <= $__to'
+        'SELECT count(*) FROM Transaction WHERE appName = "test" SINCE $__from UNTIL $__to'
       );
     });
 

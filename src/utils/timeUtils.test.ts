@@ -24,14 +24,14 @@ describe('timeUtils', () => {
       const baseQuery = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
       const result = buildNRQLWithTimeIntegration(baseQuery, true);
       
-      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to');
+      expect(result).toBe('SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to');
     });
 
     it('should add Grafana time variables to existing WHERE clause', () => {
       const baseQuery = 'SELECT count(*) FROM Transaction WHERE appName = "test" SINCE 1 hour ago';
       const result = buildNRQLWithTimeIntegration(baseQuery, true);
       
-      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to AND appName = "test"');
+      expect(result).toBe('SELECT count(*) FROM Transaction WHERE appName = "test" SINCE $__from UNTIL $__to');
     });
 
     it('should not modify query that already has Grafana time variables', () => {
@@ -45,14 +45,14 @@ describe('timeUtils', () => {
       const baseQuery = 'SELECT average(duration) FROM Transaction WHERE appName = "test" FACET host SINCE 1 hour ago LIMIT 100';
       const result = buildNRQLWithTimeIntegration(baseQuery, true);
       
-      expect(result).toBe('SELECT average(duration) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to AND appName = "test" FACET host LIMIT 100');
+      expect(result).toBe('SELECT average(duration) FROM Transaction WHERE appName = "test" FACET host LIMIT 100 SINCE $__from UNTIL $__to');
     });
 
     it('should remove SINCE and UNTIL clauses when adding Grafana time', () => {
       const baseQuery = 'SELECT count(*) FROM Transaction SINCE 2 hours ago UNTIL 1 hour ago';
       const result = buildNRQLWithTimeIntegration(baseQuery, true);
       
-      expect(result).toBe('SELECT count(*) FROM Transaction WHERE timestamp >= $__from AND timestamp <= $__to');
+      expect(result).toBe('SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to');
     });
 
     it('should return query unchanged when useGrafanaTime is false', () => {

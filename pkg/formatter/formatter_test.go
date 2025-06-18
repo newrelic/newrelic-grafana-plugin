@@ -103,11 +103,31 @@ func TestFormatQueryResults(t *testing.T) {
 			},
 			query: query,
 			validate: func(t *testing.T, resp *backend.DataResponse) {
-				require.Len(t, resp.Frames, 2)
-				assert.Equal(t, utils.FacetedFrameName, resp.Frames[0].Name)
-				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
-				assert.Equal(t, utils.FacetedTimeSeriesFrameName, resp.Frames[1].Name)
-				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
+				require.Len(t, resp.Frames, 2) // One frame per facet value (like Grafana Cloud)
+
+				// First frame should be for service1
+				frame1 := resp.Frames[0]
+				require.Len(t, frame1.Fields, 2) // time and count fields
+
+				// Check time field
+				timeField1 := frame1.Fields[0]
+				assert.Equal(t, "time", timeField1.Name)
+
+				// Check count field with service label
+				countField1 := frame1.Fields[1]
+				assert.Equal(t, "count", countField1.Name)
+				assert.Equal(t, "service1", countField1.Labels["service"])
+				assert.Equal(t, 42.0, countField1.At(0))
+
+				// Second frame should be for service2
+				frame2 := resp.Frames[1]
+				require.Len(t, frame2.Fields, 2) // time and count fields
+
+				// Check count field with service label
+				countField2 := frame2.Fields[1]
+				assert.Equal(t, "count", countField2.Name)
+				assert.Equal(t, "service2", countField2.Labels["service"])
+				assert.Equal(t, 24.0, countField2.At(0))
 			},
 		},
 		{
@@ -168,6 +188,60 @@ func TestFormatQueryResults(t *testing.T) {
 				// Verify count field is present
 				countField := frame.Fields[1]
 				assert.Equal(t, "count", countField.Name)
+			},
+		},
+		{
+			name: "faceted timeseries query",
+			results: &nrdb.NRDBResultContainer{
+				Metadata: nrdb.NRDBMetadata{
+					Facets: []string{"request.uri"},
+				},
+				Results: []nrdb.NRDBResult{
+					{
+						"beginTimeSeconds": float64(1750148571),
+						"endTimeSeconds":   float64(1750148631),
+						"count":            10.0,
+						"facet":            []interface{}{"/users"},
+					},
+					{
+						"beginTimeSeconds": float64(1750148631),
+						"endTimeSeconds":   float64(1750148691),
+						"count":            20.0,
+						"facet":            []interface{}{"/users"},
+					},
+					{
+						"beginTimeSeconds": float64(1750148571),
+						"endTimeSeconds":   float64(1750148631),
+						"count":            5.0,
+						"facet":            []interface{}{"/api"},
+					},
+				},
+			},
+			query: query,
+			validate: func(t *testing.T, resp *backend.DataResponse) {
+				require.Len(t, resp.Frames, 2) // One frame per facet value
+
+				// First frame should be for /users with 2 time points
+				frame1 := resp.Frames[0]
+				require.Len(t, frame1.Fields, 2) // time and count fields
+
+				timeField1 := frame1.Fields[0]
+				assert.Equal(t, "time", timeField1.Name)
+				assert.Equal(t, 2, timeField1.Len()) // 2 time points for /users
+
+				countField1 := frame1.Fields[1]
+				assert.Equal(t, "count", countField1.Name)
+				assert.Equal(t, "/users", countField1.Labels["request.uri"])
+				assert.Equal(t, 2, countField1.Len()) // 2 count values
+
+				// Second frame should be for /api with 1 time point
+				frame2 := resp.Frames[1]
+				require.Len(t, frame2.Fields, 2) // time and count fields
+
+				countField2 := frame2.Fields[1]
+				assert.Equal(t, "count", countField2.Name)
+				assert.Equal(t, "/api", countField2.Labels["request.uri"])
+				assert.Equal(t, 1, countField2.Len()) // 1 count value
 			},
 		},
 	}

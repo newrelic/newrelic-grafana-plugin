@@ -38,6 +38,8 @@ func FormatQueryResults(results *nrdb.NRDBResultContainer, query backend.DataQue
 	// Route to appropriate formatter based on query type
 	if isSimpleCountQuery(results) {
 		return formatSimpleCountQuery(results, query)
+	} else if isFacetedTimeseriesQuery(results) {
+		return formatFacetedTimeseriesQuery(results, query)
 	} else if isFacetedCountQuery(results) {
 		return formatFacetedCountQuery(results, query)
 	} else {
@@ -56,7 +58,26 @@ func isSimpleCountQuery(results *nrdb.NRDBResultContainer) bool {
 func isFacetedCountQuery(results *nrdb.NRDBResultContainer) bool {
 	return len(results.Results) > 0 &&
 		results.Results[0][utils.CountFieldName] != nil &&
-		results.Results[0][utils.FacetFieldName] != nil
+		results.Results[0][utils.FacetFieldName] != nil &&
+		!hasTimeseriesData(results)
+}
+
+// isFacetedTimeseriesQuery checks if the results represent a faceted timeseries query
+func isFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer) bool {
+	return len(results.Results) > 0 &&
+		results.Results[0][utils.CountFieldName] != nil &&
+		results.Results[0][utils.FacetFieldName] != nil &&
+		hasTimeseriesData(results)
+}
+
+// hasTimeseriesData checks if the results contain timeseries data (beginTimeSeconds or endTimeSeconds)
+func hasTimeseriesData(results *nrdb.NRDBResultContainer) bool {
+	if len(results.Results) == 0 {
+		return false
+	}
+	_, hasBeginTime := results.Results[0]["beginTimeSeconds"]
+	_, hasEndTime := results.Results[0]["endTimeSeconds"]
+	return hasBeginTime || hasEndTime
 }
 
 // formatSimpleCountQuery formats results from a simple count query
@@ -120,19 +141,70 @@ func formatFacetedCountQuery(results *nrdb.NRDBResultContainer, query backend.Da
 
 	// Get facet names
 	facetNames := extractFacetNames(results)
+	log.DefaultLogger.Debug("Facet names extracted: %v", facetNames)
 
 	// Extract data
 	counts, facetFields := extractFacetedData(results, facetNames)
+	log.DefaultLogger.Debug("Counts: %v, Facet fields: %v", counts, facetFields)
 
-	// Create table frame
-	facetFrame := createFacetTableFrame(facetNames, counts, facetFields)
+	// Create separate frames for each facet value (like Grafana Cloud plugin)
+	if len(facetNames) > 0 {
+		facetName := facetNames[0] // Use the first facet for labels
+		facetValues := facetFields[facetName]
 
-	// Create time series frame
-	timeSeriesFrame := createFacetTimeSeriesFrame(facetNames, counts, facetFields, query)
+		for i, facetValue := range facetValues {
+			// Create a frame for each facet value
+			frame := data.NewFrame("")
 
-	// Add both frames to the response
-	resp.Frames = append(resp.Frames, facetFrame, timeSeriesFrame)
+			// Add time field
+			now := time.Now()
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, []time.Time{now}))
+
+			// Add count field with facet label (matching Grafana Cloud plugin)
+			countField := data.NewField("count", map[string]string{
+				facetName: facetValue,
+			}, []float64{counts[i]})
+			frame.Fields = append(frame.Fields, countField)
+
+			resp.Frames = append(resp.Frames, frame)
+		}
+	}
+
+	log.DefaultLogger.Debug("Total frames in response: %d", len(resp.Frames))
+
 	return resp
+}
+
+// createPieChartFrame creates a frame optimized for pie chart visualization
+func createPieChartFrame(facetNames []string, counts []float64, facetFields map[string][]string) *data.Frame {
+	// Use a distinctive name for the pie chart frame
+	pieFrame := data.NewFrame("pie_chart_data")
+
+	if len(facetNames) > 0 && len(counts) > 0 {
+		// For pie charts, we want facet values as labels
+		facetName := facetNames[0] // Use the first facet for pie chart labels
+		labels := facetFields[facetName]
+
+		log.DefaultLogger.Debug("Creating pie chart frame: facet=%s, labels=%v, counts=%v", facetName, labels, counts)
+
+		// Create fields for pie chart - labels first, then values
+		pieFrame.Fields = append(pieFrame.Fields,
+			data.NewField("label", nil, labels))
+		pieFrame.Fields = append(pieFrame.Fields,
+			data.NewField("value", nil, counts))
+	}
+
+	// Set visualization preference to table (pie chart VisType not available in SDK)
+	// But use a custom type version to hint at pie chart usage
+	pieFrame.Meta = &data.FrameMeta{
+		PreferredVisualization: data.VisTypeTable,
+		Custom: map[string]interface{}{
+			"chartType": "pie",
+		},
+	}
+
+	return pieFrame
 }
 
 // extractFacetNames extracts facet names from query metadata
@@ -322,4 +394,70 @@ func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNa
 			}
 		}
 	}
+}
+
+// formatFacetedTimeseriesQuery formats results from a faceted timeseries query
+func formatFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
+	resp := &backend.DataResponse{}
+
+	// Get facet names
+	facetNames := extractFacetNames(results)
+	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted: %v", facetNames)
+
+	if len(facetNames) == 0 {
+		// No facets, fall back to standard query
+		return formatStandardQuery(results, query)
+	}
+
+	// Group results by facet value
+	facetData := groupTimeseriesByFacet(results, facetNames[0])
+	log.DefaultLogger.Debug("Faceted timeseries - Grouped into %d facet groups", len(facetData))
+
+	// Create separate frames for each facet value (like Grafana Cloud plugin)
+	for facetValue, facetResults := range facetData {
+		frame := data.NewFrame("")
+
+		// Create time field from the facet results
+		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
+		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
+
+		// Create count field with facet label
+		counts := make([]float64, len(facetResults))
+		for i, result := range facetResults {
+			if countValue, ok := result[utils.CountFieldName].(float64); ok {
+				counts[i] = countValue
+			}
+		}
+
+		countField := data.NewField("count", map[string]string{
+			facetNames[0]: facetValue,
+		}, counts)
+		frame.Fields = append(frame.Fields, countField)
+
+		resp.Frames = append(resp.Frames, frame)
+	}
+
+	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response: %d", len(resp.Frames))
+
+	return resp
+}
+
+// groupTimeseriesByFacet groups timeseries results by facet value
+func groupTimeseriesByFacet(results *nrdb.NRDBResultContainer, facetName string) map[string][]nrdb.NRDBResult {
+	grouped := make(map[string][]nrdb.NRDBResult)
+
+	for _, result := range results.Results {
+		facetValue := ""
+		if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok && len(facetArray) > 0 {
+			facetValue = fmt.Sprintf("%v", facetArray[0])
+		} else if result[utils.FacetFieldName] != nil {
+			facetValue = fmt.Sprintf("%v", result[utils.FacetFieldName])
+		}
+
+		if facetValue != "" {
+			grouped[facetValue] = append(grouped[facetValue], result)
+		}
+	}
+
+	return grouped
 }

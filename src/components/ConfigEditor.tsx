@@ -217,7 +217,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
       <InlineFieldRow>
         <InlineField
           label="API Key"
-          labelWidth={14}
+          labelWidth={16}
           tooltip="Your New Relic API key. This is stored securely and never sent to the frontend."
           required
           invalid={!!validationErrors.apiKey && (hasInteracted.apiKey || hasSaveAttempted) && !secureJsonFields?.apiKey}
@@ -249,7 +249,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
       <InlineFieldRow>
         <InlineField
           label="Account ID"
-          labelWidth={14}
+          labelWidth={16}
           tooltip="Your New Relic account ID. This is stored securely and never sent to the frontend."
           required
           invalid={!!validationErrors.accountID && (hasInteracted.accountID || hasSaveAttempted) && !secureJsonFields?.accountID}
@@ -282,7 +282,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
       <InlineFieldRow>
         <InlineField
           label="Region"
-          labelWidth={14}
+          labelWidth={16}
           tooltip="Select the New Relic region for your account (US or EU)"
         >
           <Select

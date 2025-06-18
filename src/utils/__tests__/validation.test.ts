@@ -11,77 +11,43 @@ import {
 
 describe('Validation Utils', () => {
   describe('validateNrqlQuery', () => {
-    it('should validate basic NRQL queries', () => {
+    it('should accept all valid NRQL patterns and let New Relic API handle syntax validation', () => {
+      // Basic SELECT queries
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT * FROM Span').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT average(duration) FROM Transaction').isValid).toBe(true);
-    });
-
-    it('should validate NRQL queries with WHERE clause', () => {
+      
+      // Queries with WHERE clause
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE appName = "MyApp"').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE duration > 100').isValid).toBe(true);
-    });
-
-    it('should validate NRQL queries with FACET clause', () => {
+      
+      // Queries with FACET clause
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction FACET appName').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction FACET appName, host').isValid).toBe(true);
-    });
-
-    it('should validate NRQL queries with time clauses', () => {
+      
+      // Queries with time clauses
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction SINCE 1 hour ago').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction SINCE 1 hour ago UNTIL 30 minutes ago').isValid).toBe(true);
-    });
-
-    it('should validate NRQL queries with TIMESERIES', () => {
+      
+      // Queries with TIMESERIES
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES AUTO').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES 5 minutes').isValid).toBe(true);
-    });
-
-    it('should validate NRQL queries with LIMIT', () => {
+      
+      // Queries with LIMIT
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction LIMIT 100').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction LIMIT 1000').isValid).toBe(true);
-    });
-
-    it('should validate complex NRQL queries', () => {
+      
+      // Complex queries
       const complexQuery = 'SELECT average(duration) FROM Transaction WHERE appName = "MyApp" FACET host SINCE 1 hour ago TIMESERIES AUTO LIMIT 100';
       expect(validateNrqlQuery(complexQuery).isValid).toBe(true);
-    });
-
-    it('should reject invalid NRQL queries', () => {
-      expect(validateNrqlQuery('').isValid).toBe(false);
-      expect(validateNrqlQuery('INVALID QUERY').isValid).toBe(false);
-      expect(validateNrqlQuery('SELECT FROM').isValid).toBe(false);
-      expect(validateNrqlQuery('FROM Transaction').isValid).toBe(false);
-    });
-
-    it('should reject queries without SELECT', () => {
-      expect(validateNrqlQuery('count(*) FROM Transaction').isValid).toBe(false);
-      expect(validateNrqlQuery('FROM Transaction SINCE 1 hour ago').isValid).toBe(false);
-    });
-
-    it('should reject queries without FROM', () => {
-      expect(validateNrqlQuery('SELECT count(*)').isValid).toBe(false);
-      expect(validateNrqlQuery('SELECT * WHERE appName = "test"').isValid).toBe(false);
-    });
-
-    it('should handle null and undefined values', () => {
-      expect(validateNrqlQuery(null as any).isValid).toBe(false);
-      expect(validateNrqlQuery(undefined as any).isValid).toBe(false);
-    });
-
-    it('should handle whitespace-only queries', () => {
-      expect(validateNrqlQuery('   ').isValid).toBe(false);
-      expect(validateNrqlQuery('\t\n').isValid).toBe(false);
-    });
-
-    it('should be case insensitive for keywords', () => {
+      
+      // Case insensitive
       expect(validateNrqlQuery('select count(*) from Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT COUNT(*) FROM TRANSACTION').isValid).toBe(true);
       expect(validateNrqlQuery('Select Average(duration) From Transaction').isValid).toBe(true);
-    });
-
-    it('should validate aggregation functions', () => {
+      
+      // Aggregation functions
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT average(duration) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT sum(duration) FROM Transaction').isValid).toBe(true);
@@ -90,16 +56,67 @@ describe('Validation Utils', () => {
       expect(validateNrqlQuery('SELECT percentile(duration, 95) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT uniqueCount(userId) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT latest(timestamp) FROM Transaction').isValid).toBe(true);
-    });
-
-    it('should validate multiple attributes in SELECT', () => {
+      
+      // Multiple attributes
       expect(validateNrqlQuery('SELECT duration, responseTime FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT appName, host, duration FROM Transaction').isValid).toBe(true);
-    });
-
-    it('should handle queries with special characters', () => {
+      
+      // Special characters
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE appName = "My-App_2023"').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE host LIKE "%prod%"').isValid).toBe(true);
+    });
+
+    it('should now accept queries that would previously be considered invalid - let New Relic API validate', () => {
+      // These would previously fail but now pass - New Relic API will handle validation
+      expect(validateNrqlQuery('INVALID QUERY').isValid).toBe(true);
+      expect(validateNrqlQuery('SELECT FROM').isValid).toBe(true);
+      expect(validateNrqlQuery('FROM Transaction').isValid).toBe(true);
+      expect(validateNrqlQuery('count(*) FROM Transaction').isValid).toBe(true);
+      expect(validateNrqlQuery('FROM Transaction SINCE 1 hour ago').isValid).toBe(true);
+      expect(validateNrqlQuery('SELECT count(*)').isValid).toBe(true);
+      expect(validateNrqlQuery('SELECT * WHERE appName = "test"').isValid).toBe(true);
+    });
+
+    it('should reject empty queries', () => {
+      expect(validateNrqlQuery('').isValid).toBe(false);
+      expect(validateNrqlQuery('').message).toBe('Query is required');
+    });
+
+    it('should reject queries with only whitespace', () => {
+      expect(validateNrqlQuery('   ').isValid).toBe(false);
+      expect(validateNrqlQuery('   ').message).toBe('Query cannot be empty');
+      expect(validateNrqlQuery('\t\n').isValid).toBe(false);
+      expect(validateNrqlQuery('\t\n').message).toBe('Query cannot be empty');
+    });
+
+    it('should handle null and undefined values', () => {
+      expect(validateNrqlQuery(null as any).isValid).toBe(false);
+      expect(validateNrqlQuery(null as any).message).toBe('Query is required');
+      expect(validateNrqlQuery(undefined as any).isValid).toBe(false);
+      expect(validateNrqlQuery(undefined as any).message).toBe('Query is required');
+    });
+
+    it('should reject dangerous database operations for security', () => {
+      const dangerousQueries = [
+        'DROP TABLE Transaction',
+        'DELETE FROM Transaction',
+        'INSERT INTO Transaction',
+        'UPDATE Transaction SET',
+        'CREATE TABLE Test',
+        'ALTER TABLE Transaction',
+        'drop table users',
+        'delete from logs',
+        'insert into data',
+        'update records set',
+        'create index on',
+        'alter column name',
+      ];
+
+      dangerousQueries.forEach(query => {
+        const result = validateNrqlQuery(query);
+        expect(result.isValid).toBe(false);
+        expect(result.message).toBe('Query contains potentially dangerous operations');
+      });
     });
   });
 
@@ -329,69 +346,6 @@ describe('Validation Utils', () => {
     });
   });
 
-  describe('validateNrqlQuery', () => {
-    it('should validate correct NRQL query', () => {
-      const query = 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
-      const result = validateNrqlQuery(query);
-      expect(result.isValid).toBe(true);
-    });
-
-    it('should validate SELECT * query', () => {
-      const query = 'SELECT * FROM Transaction SINCE 1 hour ago LIMIT 100';
-      const result = validateNrqlQuery(query);
-      expect(result.isValid).toBe(true);
-    });
-
-    it('should reject empty query', () => {
-      const result = validateNrqlQuery('');
-      expect(result.isValid).toBe(false);
-      expect(result.message).toBe('Query is required');
-    });
-
-    it('should reject query without SELECT', () => {
-      const query = 'FROM Transaction SINCE 1 hour ago';
-      const result = validateNrqlQuery(query);
-      expect(result.isValid).toBe(false);
-      expect(result.message).toBe('NRQL query must start with SELECT');
-    });
-
-    it('should reject query without FROM', () => {
-      const query = 'SELECT count(*) SINCE 1 hour ago';
-      const result = validateNrqlQuery(query);
-      expect(result.isValid).toBe(false);
-      expect(result.message).toBe('NRQL query must contain a FROM clause');
-    });
-
-    it('should reject dangerous operations', () => {
-      const dangerousQueries = [
-        'DROP TABLE Transaction',
-        'DELETE FROM Transaction',
-        'INSERT INTO Transaction',
-        'UPDATE Transaction SET',
-        'CREATE TABLE Test',
-        'ALTER TABLE Transaction',
-      ];
-
-      dangerousQueries.forEach(query => {
-        const result = validateNrqlQuery(query);
-        expect(result.isValid).toBe(false);
-        expect(result.message).toBe('Query contains potentially dangerous operations');
-      });
-    });
-
-    it('should handle null/undefined input', () => {
-      const result = validateNrqlQuery(null as any);
-      expect(result.isValid).toBe(false);
-      expect(result.message).toBe('Query is required');
-    });
-
-    it('should handle whitespace-only query', () => {
-      const result = validateNrqlQuery('   ');
-      expect(result.isValid).toBe(false);
-      expect(result.message).toBe('Query cannot be empty');
-    });
-  });
-
   describe('validateUrl', () => {
     it('should validate correct HTTPS URL', () => {
       const url = 'https://api.newrelic.com/graphql';
@@ -531,7 +485,8 @@ describe('Validation Utils', () => {
 
     it('should be resilient to prototype pollution attempts', () => {
       const maliciousInput = '{"__proto__": {"isValid": true}}';
-      expect(validateNrqlQuery(maliciousInput).isValid).toBe(false);
+      // NRQL validation now accepts any non-empty string - let New Relic API validate
+      expect(validateNrqlQuery(maliciousInput).isValid).toBe(true);
       expect(validateApiKey(maliciousInput)).toBe(false);
       expect(validateAccountId(maliciousInput)).toBe(false);
     });
