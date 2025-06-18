@@ -171,9 +171,18 @@ func (d *Datasource) handleHealthResource(ctx context.Context, req *backend.Call
 	healthResult, err := health.ExecuteHealthCheck(ctx, *req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
 		log.DefaultLogger.Error("Resource health check failed internally", "error", err)
+		// Return 200 with error details instead of 500 to avoid browser popups
+		response := map[string]interface{}{
+			"status":  "ERROR",
+			"message": "Internal health check error: " + err.Error(),
+		}
+		responseBody, _ := json.Marshal(response)
 		return sender.Send(&backend.CallResourceResponse{
-			Status: http.StatusInternalServerError,
-			Body:   []byte(`{"status": "ERROR", "message": "Internal health check error"}`),
+			Status: http.StatusOK,
+			Body:   responseBody,
+			Headers: map[string][]string{
+				"Content-Type": {"application/json"},
+			},
 		})
 	}
 
@@ -186,9 +195,18 @@ func (d *Datasource) handleHealthResource(ctx context.Context, req *backend.Call
 	responseBody, err := json.Marshal(response)
 	if err != nil {
 		log.DefaultLogger.Error("Failed to marshal health response", "error", err)
+		// Return 200 with error details instead of 500 to avoid browser popups
+		fallbackResponse := map[string]interface{}{
+			"status":  "ERROR",
+			"message": "Failed to process health check response",
+		}
+		fallbackBody, _ := json.Marshal(fallbackResponse)
 		return sender.Send(&backend.CallResourceResponse{
-			Status: http.StatusInternalServerError,
-			Body:   []byte(`{"status": "ERROR", "message": "Failed to marshal response"}`),
+			Status: http.StatusOK,
+			Body:   fallbackBody,
+			Headers: map[string][]string{
+				"Content-Type": {"application/json"},
+			},
 		})
 	}
 

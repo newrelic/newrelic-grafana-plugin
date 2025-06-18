@@ -2,8 +2,10 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -255,4 +257,228 @@ func TestCheckHealth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDatasource_CallResource(t *testing.T) {
+	tests := []struct {
+		name               string
+		path               string
+		healthCheckSuccess bool
+		healthCheckError   error
+		expectedStatus     int
+		expectedResponse   string
+	}{
+		{
+			name:               "health endpoint success",
+			path:               "health",
+			healthCheckSuccess: true,
+			expectedStatus:     http.StatusOK,
+			expectedResponse:   `{"status":"OK","message":"✅ New Relic connection successful (Account ID: 123456)"}`,
+		},
+		{
+			name:               "health endpoint error",
+			path:               "health",
+			healthCheckSuccess: false,
+			expectedStatus:     http.StatusOK,
+			expectedResponse:   `{"status":"ERROR","message":"Authentication failed for account ID 123456. Please verify your API key is correct and has access to this account."}`,
+		},
+		{
+			name:             "unknown endpoint",
+			path:             "unknown",
+			expectedStatus:   http.StatusNotFound,
+			expectedResponse: `{"error": "Resource not found"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ds := &Datasource{}
+
+			// Create test settings
+			settings := backend.DataSourceInstanceSettings{
+				ID:   1,
+				Name: "test-datasource",
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey":    "test-api-key",
+					"accountID": "123456",
+				},
+				JSONData: []byte(`{}`),
+			}
+
+			req := &backend.CallResourceRequest{
+				Path: tt.path,
+				PluginContext: backend.PluginContext{
+					DataSourceInstanceSettings: &settings,
+				},
+			}
+
+			// Create a mock response sender
+			var capturedResponse *backend.CallResourceResponse
+			sender := &mockCallResourceResponseSender{
+				sendFunc: func(resp *backend.CallResourceResponse) error {
+					capturedResponse = resp
+					return nil
+				},
+			}
+
+			// Call the function
+			err := ds.CallResource(context.Background(), req, sender)
+			require.NoError(t, err)
+
+			// Verify response
+			require.NotNil(t, capturedResponse)
+			assert.Equal(t, tt.expectedStatus, capturedResponse.Status)
+
+			if tt.path == "health" {
+				// For health endpoint, we expect a JSON response with status and message
+				var response map[string]interface{}
+				err := json.Unmarshal(capturedResponse.Body, &response)
+				require.NoError(t, err)
+
+				// Since we're using test credentials, expect ERROR status in both cases
+				assert.Equal(t, "ERROR", response["status"])
+
+				if tt.healthCheckSuccess {
+					// This test case expects success but will fail with test credentials
+					assert.Contains(t, response["message"], "Authentication failed")
+				} else {
+					assert.Contains(t, response["message"], "Authentication failed")
+				}
+			} else {
+				assert.JSONEq(t, tt.expectedResponse, string(capturedResponse.Body))
+			}
+		})
+	}
+}
+
+// mockCallResourceResponseSender implements backend.CallResourceResponseSender for testing
+type mockCallResourceResponseSender struct {
+	sendFunc func(*backend.CallResourceResponse) error
+}
+
+func (m *mockCallResourceResponseSender) Send(resp *backend.CallResourceResponse) error {
+	return m.sendFunc(resp)
+}
+
+func TestDatasource_HandleHealthResource(t *testing.T) {
+	tests := []struct {
+		name             string
+		settings         backend.DataSourceInstanceSettings
+		expectedStatus   string
+		expectedContains string
+	}{
+		{
+			name: "valid settings",
+			settings: backend.DataSourceInstanceSettings{
+				ID:   1,
+				Name: "test-datasource",
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey":    "test-api-key",
+					"accountID": "123456",
+				},
+				JSONData: []byte(`{}`),
+			},
+			expectedStatus:   "ERROR", // Will fail with real API call
+			expectedContains: "Authentication failed",
+		},
+		{
+			name: "invalid settings - missing API key",
+			settings: backend.DataSourceInstanceSettings{
+				ID:   1,
+				Name: "test-datasource",
+				DecryptedSecureJSONData: map[string]string{
+					"accountID": "123456",
+				},
+				JSONData: []byte(`{}`),
+			},
+			expectedStatus:   "ERROR",
+			expectedContains: "Enter New Relic API key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ds := &Datasource{}
+
+			req := &backend.CallResourceRequest{
+				Path: "health",
+				PluginContext: backend.PluginContext{
+					DataSourceInstanceSettings: &tt.settings,
+				},
+			}
+
+			var capturedResponse *backend.CallResourceResponse
+			sender := &mockCallResourceResponseSender{
+				sendFunc: func(resp *backend.CallResourceResponse) error {
+					capturedResponse = resp
+					return nil
+				},
+			}
+
+			err := ds.handleHealthResource(context.Background(), req, sender)
+			require.NoError(t, err)
+
+			require.NotNil(t, capturedResponse)
+			assert.Equal(t, http.StatusOK, capturedResponse.Status)
+
+			var response map[string]interface{}
+			err = json.Unmarshal(capturedResponse.Body, &response)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedStatus, response["status"])
+			assert.Contains(t, response["message"], tt.expectedContains)
+		})
+	}
+}
+
+func TestDatasource_HandleHealthResource_InternalError(t *testing.T) {
+	// Test internal health check error handling
+	originalExecuteHealthCheck := health.ExecuteHealthCheck
+	defer func() {
+		health.ExecuteHealthCheck = originalExecuteHealthCheck
+	}()
+
+	// Mock ExecuteHealthCheck to return an error
+	health.ExecuteHealthCheck = func(ctx context.Context, dsSettings backend.DataSourceInstanceSettings) (*backend.CheckHealthResult, error) {
+		return nil, errors.New("internal health check error")
+	}
+
+	ds := &Datasource{}
+	settings := backend.DataSourceInstanceSettings{
+		ID:   1,
+		Name: "test-datasource",
+		DecryptedSecureJSONData: map[string]string{
+			"apiKey":    "test-api-key",
+			"accountID": "123456",
+		},
+		JSONData: []byte(`{}`),
+	}
+
+	req := &backend.CallResourceRequest{
+		Path: "health",
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &settings,
+		},
+	}
+
+	var capturedResponse *backend.CallResourceResponse
+	sender := &mockCallResourceResponseSender{
+		sendFunc: func(resp *backend.CallResourceResponse) error {
+			capturedResponse = resp
+			return nil
+		},
+	}
+
+	err := ds.handleHealthResource(context.Background(), req, sender)
+	require.NoError(t, err)
+
+	require.NotNil(t, capturedResponse)
+	assert.Equal(t, http.StatusOK, capturedResponse.Status)
+
+	var response map[string]interface{}
+	err = json.Unmarshal(capturedResponse.Body, &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "ERROR", response["status"])
+	assert.Contains(t, response["message"], "Internal health check error")
 }

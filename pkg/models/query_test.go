@@ -2,10 +2,12 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadPluginSettings_Success(t *testing.T) {
@@ -187,5 +189,53 @@ func TestQueryModel_Unmarshal(t *testing.T) {
 
 	if !reflect.DeepEqual(qm, expectedQm) {
 		t.Errorf("Unmarshal QueryModel got %+v, expected %+v", qm, expectedQm)
+	}
+}
+
+func TestPluginSettingsError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *PluginSettingsError
+		expected string
+	}{
+		{
+			name: "error with message and wrapped error",
+			err: &PluginSettingsError{
+				Msg: "validation failed",
+				Err: fmt.Errorf("underlying error"),
+			},
+			expected: "validation failed: underlying error",
+		},
+		{
+			name: "error with only wrapped error",
+			err: &PluginSettingsError{
+				Msg: "",
+				Err: fmt.Errorf("underlying error"),
+			},
+			expected: "underlying error",
+		},
+		{
+			name: "error with only message",
+			err: &PluginSettingsError{
+				Msg: "validation failed",
+				Err: nil,
+			},
+			expected: "validation failed",
+		},
+		{
+			name: "empty error",
+			err: &PluginSettingsError{
+				Msg: "",
+				Err: nil,
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			assert.Equal(t, tt.expected, result)
+		})
 	}
 }

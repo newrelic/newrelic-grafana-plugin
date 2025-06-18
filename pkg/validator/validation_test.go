@@ -117,7 +117,7 @@ func TestCheckHealth(t *testing.T) {
 			executor: &mockNRDBExecutor{},
 			want: &backend.CheckHealthResult{
 				Status:  backend.HealthStatusOk,
-				Message: "✅ Successfully connected to New Relic API! Account ID 123456 is accessible and returned 1 data point(s). Test query executed successfully.",
+				Message: "✅ New Relic connection successful (Account ID: 123456)",
 			},
 			wantErr: false,
 		},
