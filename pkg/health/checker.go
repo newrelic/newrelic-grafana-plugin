@@ -46,7 +46,9 @@ func PerformHealthCheck1(ctx context.Context, dsSettings backend.DataSourceInsta
 
 	// Step 2: Attempt to create a New Relic client using the API key from settings.
 	// This verifies that the API key is present and allows for basic client initialization.
-	nrClient, err := client.CreateNewRelicClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
+	clientConfig := client.DefaultConfig()
+	clientConfig.APIKey = config.Secrets.ApiKey
+	nrClient, err := client.NewClient(clientConfig)
 	if err != nil {
 		log.DefaultLogger.Error("health.ExecuteHealthCheck: Failed to create New Relic client", "error", err)
 		// Return a HealthStatusError to Grafana, indicating an issue with client setup.

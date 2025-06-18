@@ -27,6 +27,80 @@ func (m *MockNewRelicClientFactory) CreateClient(opts ...newrelic.ConfigOption) 
 	return m.Client, nil
 }
 
+// TestNewClient tests the direct client creation functionality
+func TestNewClient(t *testing.T) {
+	// Save the original newrelic.New function to restore after tests
+	originalNewFunc := newrelicNewFunc
+	defer func() { newrelicNewFunc = originalNewFunc }()
+
+	tests := []struct {
+		name    string
+		config  ClientConfig
+		mockFn  func(...newrelic.ConfigOption) (*newrelic.NewRelic, error)
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			config: ClientConfig{
+				APIKey:    "valid-api-key",
+				Region:    "US",
+				Timeout:   30 * time.Second,
+				UserAgent: "test-user-agent",
+			},
+			mockFn: func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+				return &newrelic.NewRelic{}, nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty api key",
+			config: ClientConfig{
+				APIKey:    "",
+				Region:    "US",
+				Timeout:   30 * time.Second,
+				UserAgent: "test-user-agent",
+			},
+			mockFn:  nil, // won't be called with empty API key
+			wantErr: true,
+		},
+		{
+			name: "newrelic.New error",
+			config: ClientConfig{
+				APIKey:    "valid-api-key",
+				Region:    "US",
+				Timeout:   30 * time.Second,
+				UserAgent: "test-user-agent",
+			},
+			mockFn: func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+				return nil, errors.New("failed to initialize client")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Override newrelic.New for this test case if mockFn is provided
+			if tt.mockFn != nil {
+				newrelicNewFunc = tt.mockFn
+			}
+
+			client, err := NewClient(tt.config)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, client)
+				// For empty API key, verify specific error message
+				if tt.config.APIKey == "" {
+					assert.Contains(t, err.Error(), "API key cannot be empty")
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, client)
+			}
+		})
+	}
+}
+
 // TestCreateNewRelicClient_Success tests the successful creation of a New Relic client.
 func TestCreateNewRelicClient_Success(t *testing.T) {
 	// Define a valid API key for the test.

@@ -187,9 +187,6 @@ func TestDatasource_QueryData_Success(t *testing.T) {
 	}
 	defer func() { models.LoadPluginSettings = originalLoadPluginSettings }()
 
-	// Note: validator.ValidatePluginSettings and client.CreateNewRelicClient are not declared as variables,
-	// so they cannot be mocked in this way. The test will use the real implementations.
-
 	// Call the QueryData method.
 	res, err := ds.QueryData(ctx, req)
 
