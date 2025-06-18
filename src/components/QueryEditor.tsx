@@ -17,7 +17,6 @@ type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptio
 export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const [useQueryBuilder, setUseQueryBuilder] = useState(false);
   const [validationError, setValidationError] = useState<string>('');
-  const [isValidating, setIsValidating] = useState(false);
   const [useGrafanaTime, setUseGrafanaTime] = useState(
     query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
   );
@@ -30,15 +29,13 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
-   * Validates the NRQL query and updates validation state
+   * Validates the NRQL query and updates validation state (only called when running)
    */
-  const validateQuery = useCallback(async (queryText: string) => {
+  const validateQuery = useCallback((queryText: string) => {
     if (!queryText.trim()) {
-      setValidationError('');
-      return;
+      setValidationError('Query cannot be empty');
+      return false;
     }
-
-    setIsValidating(true);
     
     try {
       const validation = validateNrqlQuery(queryText);
@@ -50,23 +47,25 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           error: validation.message,
         });
       }
+      
+      return validation.isValid;
     } catch (error) {
       logger.error('Error validating query', error as Error, {
         refId: query.refId,
       });
       setValidationError('Error validating query');
-    } finally {
-      setIsValidating(false);
+      return false;
     }
   }, [query.refId]);
 
-  // Update rawNRQL when query changes externally (but not when user is typing)
+  // Update rawNRQL when query changes externally (but don't validate)
   useEffect(() => {
     if (!isUserTypingRef.current && query.queryText !== rawNRQL) {
       setRawNRQL(query.queryText || '');
-      validateQuery(query.queryText || '');
+      // Clear any existing validation errors when query changes externally
+      setValidationError('');
     }
-  }, [query.queryText, rawNRQL, validateQuery]);
+  }, [query.queryText, rawNRQL]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -78,7 +77,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   }, []);
 
   /**
-   * Handles changes to the raw NRQL text
+   * Handles changes to the raw NRQL text (no validation while typing)
    */
   const handleNRQLChange = useCallback((queryText: string) => {
     // Mark that user is actively typing
@@ -96,27 +95,25 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     
     setRawNRQL(queryText);
     
+    // Clear validation errors while typing - don't show errors until user tries to run
+    setValidationError('');
+    
     // For time integration, we need to be careful not to modify the text that's being typed
     // Only apply time integration when the user stops typing
     const finalQuery = queryText; // Keep the raw user input
     
     const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
-    
-    // Debounced validation
-    setTimeout(() => {
-      const queryToValidate = useGrafanaTime ? 
-        buildNRQLWithTimeIntegration(queryText, true) : 
-        queryText;
-      validateQuery(queryToValidate);
-    }, 300);
-  }, [query, onChange, validateQuery, useGrafanaTime]);
+  }, [query, onChange, useGrafanaTime]);
 
   /**
-   * Handles changes from the query builder
+   * Handles changes from the query builder (also no validation while building)
    */
   const handleBuilderQueryChange = useCallback((queryText: string) => {
     setRawNRQL(queryText); // Keep in sync
+    
+    // Clear validation errors while building query
+    setValidationError('');
     
     // Apply time integration if enabled
     const finalQuery = useGrafanaTime ? 
@@ -125,12 +122,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     
     const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
-    
-    validateQuery(finalQuery);
-  }, [query, onChange, validateQuery, useGrafanaTime]);
+  }, [query, onChange, useGrafanaTime]);
 
   /**
-   * Handles toggling Grafana time picker integration
+   * Handles toggling Grafana time picker integration (no validation)
    */
   const handleTimeIntegrationToggle = useCallback((enabled: boolean) => {
     setUseGrafanaTime(enabled);
@@ -163,14 +158,15 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     
     onChange(updatedQuery);
     setRawNRQL(updatedQueryText);
-    validateQuery(updatedQueryText);
+    // Clear validation errors when changing time integration
+    setValidationError('');
     
     logger.debug('Time integration toggled', {
       refId: query.refId,
       enabled,
       hasGrafanaVars: hasGrafanaTimeVariables(updatedQueryText),
     });
-  }, [rawNRQL, query, onChange, validateQuery]);
+  }, [rawNRQL, query, onChange]);
 
   /**
    * Toggles between query builder and text editor
@@ -192,23 +188,31 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
         setRawNRQL(defaultQuery);
         onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
-        validateQuery(defaultQuery);
       }
     }
-  }, [useQueryBuilder, query, onChange, validateQuery, useGrafanaTime]);
+    
+    // Clear validation errors when switching modes
+    setValidationError('');
+  }, [useQueryBuilder, query, onChange, useGrafanaTime]);
 
   /**
-   * Handles running the query
+   * Handles running the query - validate only when attempting to run
    */
   const handleRunQuery = useCallback(() => {
     try {
-      // Validate before running
-      if (validationError) {
+      // Validate only when running the query
+      const queryToValidate = useGrafanaTime ? 
+        buildNRQLWithTimeIntegration(query.queryText || '', true) : 
+        query.queryText || '';
+      
+      const isValid = validateQuery(queryToValidate);
+      
+      if (!isValid) {
         logger.warn('Attempted to run invalid query', {
           refId: query.refId,
           error: validationError,
         });
-        return;
+        return; // Don't run the query if validation fails
       }
 
       logger.debug('Running query', { 
@@ -222,7 +226,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         refId: query.refId,
       });
     }
-  }, [validationError, query.refId, query.queryText, useGrafanaTime, onRunQuery]);
+  }, [query.refId, query.queryText, useGrafanaTime, onRunQuery, validateQuery, validationError]);
 
   return (
     <div style={{ padding: '8px 0' }}>
@@ -273,10 +277,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             variant="primary"
             size="sm"
             onClick={handleRunQuery}
-            disabled={!!validationError || isValidating || !query.queryText?.trim()}
+            disabled={!!validationError || !query.queryText?.trim()}
             icon="play"
           >
-            {isValidating ? 'Validating...' : 'Run'}
+            {validationError ? 'Invalid query' : 'Run'}
           </Button>
         </div>
       </div>
@@ -321,7 +325,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             }
           </div>
           
-          {/* Unified Status Indicator - appears in same location for both success and error */}
+          {/* Status Indicator - only show validation errors */}
           <div style={{ 
             marginTop: '8px',
             minHeight: '20px', // Reserve space to prevent layout shift
@@ -330,7 +334,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             gap: '6px'
           }}>
             {validationError ? (
-              // Error state - same styling as success but red
+              // Error state only - no success messages
               <div style={{ 
                 display: 'flex',
                 alignItems: 'center',
@@ -340,32 +344,6 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
               }}>
                 <Icon name="exclamation-triangle" size="sm" />
                 <span>{validationError}</span>
-              </div>
-            ) : query.queryText?.trim() && !isValidating ? (
-              // Success state - subtle green
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                color: '#00b894'
-              }}>
-                <Icon name="check" size="sm" />
-                <span>
-                  Query is valid and ready to execute.
-                </span>
-              </div>
-            ) : isValidating ? (
-              // Validating state
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                color: '#6c757d'
-              }}>
-                <Icon name="spinner" size="sm" />
-                <span>Validating query...</span>
               </div>
             ) : null}
           </div>
