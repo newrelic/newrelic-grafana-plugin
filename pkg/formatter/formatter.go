@@ -120,19 +120,70 @@ func formatFacetedCountQuery(results *nrdb.NRDBResultContainer, query backend.Da
 
 	// Get facet names
 	facetNames := extractFacetNames(results)
+	log.DefaultLogger.Debug("Facet names extracted: %v", facetNames)
 
 	// Extract data
 	counts, facetFields := extractFacetedData(results, facetNames)
+	log.DefaultLogger.Debug("Counts: %v, Facet fields: %v", counts, facetFields)
 
-	// Create table frame
-	facetFrame := createFacetTableFrame(facetNames, counts, facetFields)
+	// Create separate frames for each facet value (like Grafana Cloud plugin)
+	if len(facetNames) > 0 {
+		facetName := facetNames[0] // Use the first facet for labels
+		facetValues := facetFields[facetName]
 
-	// Create time series frame
-	timeSeriesFrame := createFacetTimeSeriesFrame(facetNames, counts, facetFields, query)
+		for i, facetValue := range facetValues {
+			// Create a frame for each facet value
+			frame := data.NewFrame("")
 
-	// Add both frames to the response
-	resp.Frames = append(resp.Frames, facetFrame, timeSeriesFrame)
+			// Add time field
+			now := time.Now()
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, []time.Time{now}))
+
+			// Add count field with facet label (matching Grafana Cloud plugin)
+			countField := data.NewField("count", map[string]string{
+				facetName: facetValue,
+			}, []float64{counts[i]})
+			frame.Fields = append(frame.Fields, countField)
+
+			resp.Frames = append(resp.Frames, frame)
+		}
+	}
+
+	log.DefaultLogger.Debug("Total frames in response: %d", len(resp.Frames))
+
 	return resp
+}
+
+// createPieChartFrame creates a frame optimized for pie chart visualization
+func createPieChartFrame(facetNames []string, counts []float64, facetFields map[string][]string) *data.Frame {
+	// Use a distinctive name for the pie chart frame
+	pieFrame := data.NewFrame("pie_chart_data")
+
+	if len(facetNames) > 0 && len(counts) > 0 {
+		// For pie charts, we want facet values as labels
+		facetName := facetNames[0] // Use the first facet for pie chart labels
+		labels := facetFields[facetName]
+
+		log.DefaultLogger.Debug("Creating pie chart frame: facet=%s, labels=%v, counts=%v", facetName, labels, counts)
+
+		// Create fields for pie chart - labels first, then values
+		pieFrame.Fields = append(pieFrame.Fields,
+			data.NewField("label", nil, labels))
+		pieFrame.Fields = append(pieFrame.Fields,
+			data.NewField("value", nil, counts))
+	}
+
+	// Set visualization preference to table (pie chart VisType not available in SDK)
+	// But use a custom type version to hint at pie chart usage
+	pieFrame.Meta = &data.FrameMeta{
+		PreferredVisualization: data.VisTypeTable,
+		Custom: map[string]interface{}{
+			"chartType": "pie",
+		},
+	}
+
+	return pieFrame
 }
 
 // extractFacetNames extracts facet names from query metadata
