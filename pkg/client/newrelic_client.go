@@ -4,7 +4,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
+)
+
+var (
+	serviceName = "newrelic-grafana-plugin"
+	// newrelicNewFunc is a variable that holds the function to create a New Relic client
+	// This allows for mocking in tests
+	newrelicNewFunc = newrelic.New
 )
 
 // ClientConfig holds configuration options for the New Relic client
@@ -24,7 +32,7 @@ func DefaultConfig() ClientConfig {
 		Timeout:    30 * time.Second,
 		RetryCount: 3,
 		RetryDelay: 1 * time.Second,
-		UserAgent:  "newrelic-grafana-plugin",
+		UserAgent:  serviceName,
 	}
 }
 
@@ -45,6 +53,35 @@ func (e *NewRelicClientError) Error() string {
 // Unwrap returns the wrapped error, if any, allowing for error chain inspection.
 func (e *NewRelicClientError) Unwrap() error {
 	return e.Err
+}
+
+// NewClient creates a New Relic client with the specified configuration.
+// This is the recommended way to create a client.
+func NewClient(config ClientConfig) (*newrelic.NewRelic, error) {
+	log.DefaultLogger.Debug("NewRelicClient: Initializing New Relic client with configuration")
+	if config.APIKey == "" {
+		return nil, &NewRelicClientError{Msg: "New Relic API key cannot be empty"}
+	}
+
+	// Setup configuration options
+	cfgOpts := []newrelic.ConfigOption{
+		newrelic.ConfigPersonalAPIKey(config.APIKey),
+		newrelic.ConfigRegion(config.Region),
+		newrelic.ConfigUserAgent(config.UserAgent),
+		newrelic.ConfigServiceName(serviceName),
+	}
+
+	// Create the client directly using the variable function to allow for testing
+	nrClient, err := newrelicNewFunc(cfgOpts...)
+	// print nrClient to debug
+	if nrClient != nil {
+		log.DefaultLogger.Debug("NewRelicClient: New Relic client initialized successfully", "client", nrClient)
+	}
+	if err != nil {
+		return nil, &NewRelicClientError{Msg: "failed to initialize New Relic client", Err: err}
+	}
+
+	return nrClient, nil
 }
 
 // CreateNewRelicClient initializes and returns a New Relic client using the provided API key
@@ -79,6 +116,7 @@ func GetClient(config ClientConfig, factory NewRelicClientFactory) (*newrelic.Ne
 		newrelic.ConfigPersonalAPIKey(config.APIKey),
 		newrelic.ConfigRegion(config.Region),
 		newrelic.ConfigUserAgent(config.UserAgent),
+		newrelic.ConfigServiceName(serviceName),
 	}
 
 	client, err := factory.CreateClient(opts...)

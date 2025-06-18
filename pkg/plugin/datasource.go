@@ -76,7 +76,12 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		return nil, fmt.Errorf("invalid plugin configuration: %w", err)
 	}
 
-	nrClient, err := client.CreateNewRelicClient(config.Secrets.ApiKey, &client.DefaultNewRelicClientFactory{})
+	// Create a client config
+	clientConfig := client.DefaultConfig()
+	clientConfig.APIKey = config.Secrets.ApiKey
+
+	// Create New Relic client using the new method
+	nrClient, err := client.NewClient(clientConfig)
 	if err != nil {
 		logger.Error("Failed to create New Relic client", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
 		return nil, fmt.Errorf("failed to create New Relic client: %w", err)

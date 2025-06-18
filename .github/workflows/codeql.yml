@@ -1,23 +1,13 @@
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
-#
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
-#
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
-name: "CodeQL Advanced"
+# CodeQL Analysis workflow for both Go backend and JavaScript/TypeScript frontend
+name: "CodeQL Analysis"
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-  # schedule:
-  #   - cron: '23 5 * * 3'
+  schedule:
+    - cron: '0 12 * * 1' # Run weekly on Mondays at noon UTC
 
 jobs:
   analyze:
@@ -32,42 +22,50 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'go' ]
+        language: [ 'go', 'javascript' ] 
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Initializes the CodeQL tools for scanning.
+    - name: Setup Go
+      if: ${{ matrix.language == 'go' }}
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21' 
+
+    - name: Setup Node.js
+      if: ${{ matrix.language == 'javascript' }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    # Install dependencies
+    - name: Install Go Dependencies
+      if: ${{ matrix.language == 'go' }}
+      run: go mod download
+
+    - name: Install JS Dependencies
+      if: ${{ matrix.language == 'javascript' }}
+      run: npm ci
+
+    # Initializes the CodeQL tools for scanning
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
-        build-mode: ${{ matrix.build-mode }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
+        queries: +security-extended
 
-        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-        # queries: security-extended,security-and-quality
+    - name: Build Go Code
+      if: ${{ matrix.language == 'go' }}
+      run: |
+        # Build the Go code with optimizations disabled for better analysis
+        go build -gcflags=all="-N -l" ./...
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3    
-
-    # If the analyze step fails for one of the languages you are analyzing with
-    # "We were unable to automatically build your code", modify the matrix above
-    # to set the build mode to "manual" for that language. Then modify this step
-    # to build your code.
-    # ℹ️ Command-line programs to run using the OS shell.
-    # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    # - if: matrix.build-mode == 'manual'
-    #   shell: bash
-    #   run: |
-    #     echo 'If you are using a "manual" build mode for one or more of the' \
-    #       'languages you are analyzing, replace this with the commands to build' \
-    #       'your code, for example:'
-    #     echo '  make bootstrap'
-    #     echo '  make release'
-    #     exit 1
+    - name: Autobuild JavaScript
+      if: ${{ matrix.language == 'javascript' }}
+      uses: github/codeql-action/autobuild@v3
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
