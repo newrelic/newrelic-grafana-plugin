@@ -221,27 +221,97 @@ func TestFormatQueryResults(t *testing.T) {
 			validate: func(t *testing.T, resp *backend.DataResponse) {
 				require.Len(t, resp.Frames, 2) // One frame per facet value
 
-				// First frame should be for /users with 2 time points
+				// Collect frame information by facet value for order-independent testing
+				framesByFacet := make(map[string]*data.Frame)
+				for _, frame := range resp.Frames {
+					require.Len(t, frame.Fields, 2) // time and count fields
+					countField := frame.Fields[1]
+					assert.Equal(t, "count", countField.Name)
+					facetValue := countField.Labels["request.uri"]
+					framesByFacet[facetValue] = frame
+				}
+
+				// Verify /users frame (should have 2 time points)
+				usersFrame, exists := framesByFacet["/users"]
+				require.True(t, exists, "Should have frame for /users")
+				require.Len(t, usersFrame.Fields, 2)
+
+				usersTimeField := usersFrame.Fields[0]
+				assert.Equal(t, "time", usersTimeField.Name)
+				assert.Equal(t, 2, usersTimeField.Len()) // 2 time points for /users
+
+				usersCountField := usersFrame.Fields[1]
+				assert.Equal(t, "count", usersCountField.Name)
+				assert.Equal(t, "/users", usersCountField.Labels["request.uri"])
+				assert.Equal(t, 2, usersCountField.Len()) // 2 count values
+
+				// Verify /api frame (should have 1 time point)
+				apiFrame, exists := framesByFacet["/api"]
+				require.True(t, exists, "Should have frame for /api")
+				require.Len(t, apiFrame.Fields, 2)
+
+				apiCountField := apiFrame.Fields[1]
+				assert.Equal(t, "count", apiCountField.Name)
+				assert.Equal(t, "/api", apiCountField.Labels["request.uri"])
+				assert.Equal(t, 1, apiCountField.Len()) // 1 count value
+			},
+		},
+		{
+			name: "faceted aggregation timeseries query (sum.duration)",
+			results: &nrdb.NRDBResultContainer{
+				Metadata: nrdb.NRDBMetadata{
+					Facets: []string{"request.uri"},
+				},
+				Results: []nrdb.NRDBResult{
+					{
+						"beginTimeSeconds": float64(1750148571),
+						"endTimeSeconds":   float64(1750148631),
+						"sum.duration":     1500.25,
+						"facet":            []interface{}{"/api/users"},
+					},
+					{
+						"beginTimeSeconds": float64(1750148631),
+						"endTimeSeconds":   float64(1750148691),
+						"sum.duration":     2100.75,
+						"facet":            []interface{}{"/api/users"},
+					},
+					{
+						"beginTimeSeconds": float64(1750148571),
+						"endTimeSeconds":   float64(1750148631),
+						"sum.duration":     800.50,
+						"facet":            []interface{}{"/api/orders"},
+					},
+				},
+			},
+			query: query,
+			validate: func(t *testing.T, resp *backend.DataResponse) {
+				require.Len(t, resp.Frames, 2) // One frame per facet value
+
+				// First frame should be for /api/users with 2 time points
 				frame1 := resp.Frames[0]
-				require.Len(t, frame1.Fields, 2) // time and count fields
+				require.Len(t, frame1.Fields, 2) // time and sum.duration fields
 
 				timeField1 := frame1.Fields[0]
 				assert.Equal(t, "time", timeField1.Name)
-				assert.Equal(t, 2, timeField1.Len()) // 2 time points for /users
+				assert.Equal(t, 2, timeField1.Len()) // 2 time points for /api/users
 
-				countField1 := frame1.Fields[1]
-				assert.Equal(t, "count", countField1.Name)
-				assert.Equal(t, "/users", countField1.Labels["request.uri"])
-				assert.Equal(t, 2, countField1.Len()) // 2 count values
+				sumField1 := frame1.Fields[1]
+				assert.Equal(t, "sum.duration", sumField1.Name)
+				assert.Equal(t, "/api/users", sumField1.Labels["request.uri"])
+				assert.Equal(t, 2, sumField1.Len()) // 2 sum.duration values
+				// Verify the actual values
+				assert.Equal(t, 1500.25, *sumField1.At(0).(*float64))
+				assert.Equal(t, 2100.75, *sumField1.At(1).(*float64))
 
-				// Second frame should be for /api with 1 time point
+				// Second frame should be for /api/orders with 1 time point
 				frame2 := resp.Frames[1]
-				require.Len(t, frame2.Fields, 2) // time and count fields
+				require.Len(t, frame2.Fields, 2) // time and sum.duration fields
 
-				countField2 := frame2.Fields[1]
-				assert.Equal(t, "count", countField2.Name)
-				assert.Equal(t, "/api", countField2.Labels["request.uri"])
-				assert.Equal(t, 1, countField2.Len()) // 1 count value
+				sumField2 := frame2.Fields[1]
+				assert.Equal(t, "sum.duration", sumField2.Name)
+				assert.Equal(t, "/api/orders", sumField2.Labels["request.uri"])
+				assert.Equal(t, 1, sumField2.Len()) // 1 sum.duration value
+				assert.Equal(t, 800.50, *sumField2.At(0).(*float64))
 			},
 		},
 	}
@@ -412,17 +482,17 @@ func TestAddDataFields(t *testing.T) {
 			expectFunc: func(t *testing.T, frame *data.Frame) {
 				require.Len(t, frame.Fields, 2)
 
-				// Check value field
+				// Check value field (now nullable float64)
 				valueField := frame.Fields[0]
 				assert.Equal(t, "value", valueField.Name)
-				assert.Equal(t, 42.0, valueField.At(0))
-				assert.Equal(t, 24.0, valueField.At(1))
+				assert.Equal(t, 42.0, *valueField.At(0).(*float64))
+				assert.Equal(t, 24.0, *valueField.At(1).(*float64))
 
-				// Check score field
+				// Check score field (now nullable float64)
 				scoreField := frame.Fields[1]
 				assert.Equal(t, "score", scoreField.Name)
-				assert.Equal(t, 85.5, scoreField.At(0))
-				assert.Equal(t, 92.3, scoreField.At(1))
+				assert.Equal(t, 85.5, *scoreField.At(0).(*float64))
+				assert.Equal(t, 92.3, *scoreField.At(1).(*float64))
 			},
 		},
 		{
@@ -462,11 +532,11 @@ func TestAddDataFields(t *testing.T) {
 			expectFunc: func(t *testing.T, frame *data.Frame) {
 				require.Len(t, frame.Fields, 3)
 
-				// Check count field (float64)
+				// Check count field (nullable float64)
 				countField := frame.Fields[0]
 				assert.Equal(t, "count", countField.Name)
-				assert.Equal(t, 42.0, countField.At(0))
-				assert.Equal(t, 24.0, countField.At(1))
+				assert.Equal(t, 42.0, *countField.At(0).(*float64))
+				assert.Equal(t, 24.0, *countField.At(1).(*float64))
 
 				// Check name field (string)
 				nameField := frame.Fields[1]
@@ -474,11 +544,11 @@ func TestAddDataFields(t *testing.T) {
 				assert.Equal(t, "service1", nameField.At(0))
 				assert.Equal(t, "service2", nameField.At(1))
 
-				// Check active field (bool converted to string)
+				// Check active field (nullable bool)
 				activeField := frame.Fields[2]
 				assert.Equal(t, "active", activeField.Name)
-				assert.Equal(t, "true", activeField.At(0))
-				assert.Equal(t, "false", activeField.At(1))
+				assert.Equal(t, true, *activeField.At(0).(*bool))
+				assert.Equal(t, false, *activeField.At(1).(*bool))
 			},
 		},
 		{
@@ -493,11 +563,11 @@ func TestAddDataFields(t *testing.T) {
 			expectFunc: func(t *testing.T, frame *data.Frame) {
 				require.Len(t, frame.Fields, 2)
 
-				// Check value field
+				// Check value field (nullable float64)
 				valueField := frame.Fields[0]
 				assert.Equal(t, "value", valueField.Name)
-				assert.Equal(t, 42.0, valueField.At(0))
-				assert.Equal(t, 0.0, valueField.At(1)) // nil converted to zero value
+				assert.Equal(t, 42.0, *valueField.At(0).(*float64))
+				assert.Nil(t, valueField.At(1)) // nil should remain nil
 
 				// Check nullable field (string)
 				nullableField := frame.Fields[1]
