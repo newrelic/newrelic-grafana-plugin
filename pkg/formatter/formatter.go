@@ -74,7 +74,7 @@ func isFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer) bool {
 // Overloaded for NRDBResultContainerMultiResultCustomized
 func isFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) bool {
 	return len(results.Results) > 0 &&
-		// results.Results[0][utils.CountFieldName] != nil &&
+		results.Results[0][utils.CountFieldName] != nil &&
 		results.Results[0][utils.FacetFieldName] != nil &&
 		hasTimeseriesDataMulti(results)
 }
