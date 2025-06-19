@@ -38,13 +38,14 @@ func FormatQueryResults(results *nrdb.NRDBResultContainer, query backend.DataQue
 	// Route to appropriate formatter based on query type
 	if isSimpleCountQuery(results) {
 		return formatSimpleCountQuery(results, query)
-	} else if isFacetedTimeseriesQuery(results) {
-		return formatFacetedTimeseriesQuery(results, query)
 	} else if isFacetedCountQuery(results) {
 		return formatFacetedCountQuery(results, query)
 	} else {
 		return formatStandardQuery(results, query)
 	}
+	// else if isFacetedTimeseriesQuery(results) {
+	// 	return formatFacetedTimeseriesQuery(results, query)
+	// }
 }
 
 // isSimpleCountQuery checks if the results represent a simple count query
@@ -70,8 +71,24 @@ func isFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer) bool {
 		hasTimeseriesData(results)
 }
 
-// hasTimeseriesData checks if the results contain timeseries data (beginTimeSeconds or endTimeSeconds)
+// Overloaded for NRDBResultContainerMultiResultCustomized
+func isFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) bool {
+	return len(results.Results) > 0 &&
+		// results.Results[0][utils.CountFieldName] != nil &&
+		results.Results[0][utils.FacetFieldName] != nil &&
+		hasTimeseriesDataMulti(results)
+}
+
 func hasTimeseriesData(results *nrdb.NRDBResultContainer) bool {
+	if len(results.Results) == 0 {
+		return false
+	}
+	_, hasBeginTime := results.Results[0]["beginTimeSeconds"]
+	_, hasEndTime := results.Results[0]["endTimeSeconds"]
+	return hasBeginTime || hasEndTime
+}
+
+func hasTimeseriesDataMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) bool {
 	if len(results.Results) == 0 {
 		return false
 	}
@@ -216,6 +233,20 @@ func extractFacetNames(results *nrdb.NRDBResultContainer) []string {
 	return facetNames
 }
 
+// Helper for Multi type metadata
+func getMetadataMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) *nrdb.NRDBMetadata {
+	return &results.Metadata
+}
+
+// Multi version for NRDBResultContainerMultiResultCustomized
+func extractFacetNamesMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) []string {
+	metadata := getMetadataMulti(results)
+	if metadata != nil && metadata.Facets != nil {
+		return metadata.Facets
+	}
+	return nil
+}
+
 // extractFacetedData extracts counts and facet values from results
 func extractFacetedData(results *nrdb.NRDBResultContainer, facetNames []string) ([]float64, map[string][]string) {
 	counts := make([]float64, len(results.Results))
@@ -329,6 +360,19 @@ func formatStandardQuery(results *nrdb.NRDBResultContainer, query backend.DataQu
 	return resp
 }
 
+// Multi version for NRDBResultContainerMultiResultCustomized
+func formatStandardQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) *backend.DataResponse {
+	resp := &backend.DataResponse{}
+	frame := data.NewFrame(utils.StandardResponseFrameName)
+
+	fieldNames := extractFieldNamesMulti(results)
+	times := createTimeFieldMulti(results, query)
+	frame.Fields = append(frame.Fields, data.NewField(utils.TimeFieldName, nil, times))
+	addDataFieldsMulti(frame, results, fieldNames)
+	resp.Frames = append(resp.Frames, frame)
+	return resp
+}
+
 // extractFieldNames extracts unique field names from results
 func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 	fieldNamesMap := make(map[string]struct{})
@@ -346,6 +390,23 @@ func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 		fieldNames = append(fieldNames, key)
 	}
 
+	return fieldNames
+}
+
+// Multi version for NRDBResultContainerMultiResultCustomized
+func extractFieldNamesMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) []string {
+	fieldNamesMap := make(map[string]struct{})
+	for _, result := range results.Results {
+		for key := range result {
+			if key != utils.TimestampFieldName && key != "beginTimeSeconds" && key != "endTimeSeconds" {
+				fieldNamesMap[key] = struct{}{}
+			}
+		}
+	}
+	var fieldNames []string
+	for key := range fieldNamesMap {
+		fieldNames = append(fieldNames, key)
+	}
 	return fieldNames
 }
 
@@ -369,8 +430,51 @@ func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery)
 	return times
 }
 
+// Multi version for NRDBResultContainerMultiResultCustomized
+func createTimeFieldMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) []time.Time {
+	times := make([]time.Time, len(results.Results))
+	now := time.Now()
+	for i, result := range results.Results {
+		if ts, ok := result[utils.TimestampFieldName].(float64); ok {
+			times[i] = time.Unix(int64(ts/1000), 0)
+		} else if beginTs, ok := result["beginTimeSeconds"].(float64); ok {
+			times[i] = time.Unix(int64(beginTs), 0)
+		} else {
+			times[i] = now
+		}
+	}
+	return times
+}
+
 // addDataFields adds data fields to the frame based on their types
 func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNames []string) {
+	for _, fieldName := range fieldNames {
+		if len(results.Results) > 0 {
+			switch results.Results[0][fieldName].(type) {
+			case float64:
+				values := make([]float64, len(results.Results))
+				for i, result := range results.Results {
+					if val, ok := result[fieldName].(float64); ok {
+						values[i] = val
+					}
+				}
+				frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
+			default:
+				// Convert to string for other types
+				values := make([]string, len(results.Results))
+				for i, result := range results.Results {
+					if result[fieldName] != nil {
+						values[i] = fmt.Sprintf("%v", result[fieldName])
+					}
+				}
+				frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
+			}
+		}
+	}
+}
+
+// Multi version for NRDBResultContainerMultiResultCustomized
+func addDataFieldsMulti(frame *data.Frame, results *nrdb.NRDBResultContainerMultiResultCustomized, fieldNames []string) {
 	for _, fieldName := range fieldNames {
 		if len(results.Results) > 0 {
 			switch results.Results[0][fieldName].(type) {
@@ -442,6 +546,45 @@ func formatFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer, query backe
 	return resp
 }
 
+// Overloaded for NRDBResultContainerMultiResultCustomized
+func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) *backend.DataResponse {
+	resp := &backend.DataResponse{}
+
+	facetNames := extractFacetNamesMulti(results)
+	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted: %v", facetNames)
+
+	if len(facetNames) == 0 {
+		return formatStandardQueryMulti(results, query)
+	}
+
+	facetData := groupTimeseriesByFacetMulti(results, facetNames[0])
+	log.DefaultLogger.Debug("Faceted timeseries - Grouped into %d facet groups", len(facetData))
+
+	for facetValue, facetResults := range facetData {
+		frame := data.NewFrame("")
+		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
+		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
+
+		counts := make([]float64, len(facetResults))
+		for i, result := range facetResults {
+			if countValue, ok := result[utils.CountFieldName].(float64); ok {
+				counts[i] = countValue
+			}
+		}
+
+		countField := data.NewField("count", map[string]string{
+			facetNames[0]: facetValue,
+		}, counts)
+		frame.Fields = append(frame.Fields, countField)
+
+		resp.Frames = append(resp.Frames, frame)
+	}
+
+	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response: %d", len(resp.Frames))
+
+	return resp
+}
+
 // groupTimeseriesByFacet groups timeseries results by facet value
 func groupTimeseriesByFacet(results *nrdb.NRDBResultContainer, facetName string) map[string][]nrdb.NRDBResult {
 	grouped := make(map[string][]nrdb.NRDBResult)
@@ -460,4 +603,36 @@ func groupTimeseriesByFacet(results *nrdb.NRDBResultContainer, facetName string)
 	}
 
 	return grouped
+}
+
+// Multi version for NRDBResultContainerMultiResultCustomized
+func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, facetName string) map[string][]nrdb.NRDBResult {
+	grouped := make(map[string][]nrdb.NRDBResult)
+	for _, result := range results.Results {
+		facetValue := ""
+		if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok && len(facetArray) > 0 {
+			facetValue = fmt.Sprintf("%v", facetArray[0])
+		} else if result[utils.FacetFieldName] != nil {
+			facetValue = fmt.Sprintf("%v", result[utils.FacetFieldName])
+		}
+		if facetValue != "" {
+			grouped[facetValue] = append(grouped[facetValue], result)
+		}
+	}
+	return grouped
+}
+
+// FormatFacetedTimeseriesResults returns a Grafana DataResponse only if the results are faceted timeseries.
+func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) *backend.DataResponse {
+
+	resultsJSON, _ := json.MarshalIndent(results, "", "  ")
+	log.DefaultLogger.Debug("FormatFacetedTimeseriesResults Result count: %d\nResults:\n%s",
+		len(results.Results), string(resultsJSON))
+
+	if isFacetedTimeseriesQueryMulti(results) {
+		return formatFacetedTimeseriesQueryMulti(results, query)
+	}
+	resp := &backend.DataResponse{}
+	resp.Error = fmt.Errorf("results are not a faceted timeseries query")
+	return resp
 }
