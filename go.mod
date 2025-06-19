@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/grafana/grafana-plugin-sdk-go v0.277.1
-	github.com/newrelic/newrelic-client-go/v2 v2.61.2
+	github.com/newrelic/newrelic-client-go/v2 v2.64.0
 )
 
 require (

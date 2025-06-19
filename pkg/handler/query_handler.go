@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"newrelic-grafana-plugin/pkg/formatter"
 	"newrelic-grafana-plugin/pkg/models"
@@ -35,9 +36,16 @@ func (e *NRQLExecutionError) Unwrap() error {
 	return e.Err
 }
 
+// shouldUseEnhancedQuery determines if the enhanced query should be used (FACET + TIMESERIES)
+func shouldUseEnhancedQuery(query string) bool {
+	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
+	hasTimeseries := strings.Contains(strings.ToUpper(query), "TIMESERIES")
+	return hasFacet && hasTimeseries
+}
+
 // ExecuteNRQLQuery takes an NRDB query executor, account ID, and NRQL query string,
 // executes the query, and returns the results.
-func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, accountID int, nrqlQueryText string) (*nrdb.NRDBResultContainer, error) {
+func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, accountID int, nrqlQueryText string) (interface{}, error) {
 	if executor == nil {
 		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "NRDB query executor is nil, cannot execute query"}
 	}
@@ -49,11 +57,19 @@ func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor,
 	}
 
 	nrql := nrdb.NRQL(nrqlQueryText)
-	results, err := executor.QueryWithContext(ctx, accountID, nrql)
-	if err != nil {
-		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "error from New Relic API", Err: err}
+	if shouldUseEnhancedQuery(nrqlQueryText) {
+		return executor.PerformNRQLQueryWithContext(ctx, accountID, nrql)
 	}
-	return results, nil
+	return executor.QueryWithContext(ctx, accountID, nrql)
+}
+
+// checkFacetAndTimeseries logs if both FACET and TIMESERIES are present in the query
+func checkFacetAndTimeseries(query string) {
+	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
+	hasTimeseries := strings.Contains(strings.ToUpper(query), "TIMESERIES")
+	if hasFacet && hasTimeseries {
+		log.DefaultLogger.Info("Query contains both FACET and TIMESERIES", "query", query)
+	}
 }
 
 // HandleQuery processes a single Grafana data query using our interface-based approach.
@@ -87,5 +103,13 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return resp
 	}
 
-	return formatter.FormatQueryResults(results, query)
+	switch r := results.(type) {
+	case *nrdb.NRDBResultContainer:
+		return formatter.FormatQueryResults(r, query)
+	case *nrdb.NRDBResultContainerMultiResultCustomized:
+		return formatter.FormatFacetedTimeseriesResults(r, query)
+	default:
+		resp.Error = fmt.Errorf("unexpected result type from NRQL query execution")
+		return resp
+	}
 }

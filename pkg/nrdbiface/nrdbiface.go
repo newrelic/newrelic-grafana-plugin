@@ -13,6 +13,7 @@ import (
 // This abstraction allows for easier testing and dependency injection.
 type NRDBQueryExecutor interface {
 	QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error)
+	PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error)
 }
 
 // RealNRDBExecutor is a wrapper around the real nrdb.Nrdb that implements NRDBQueryExecutor.
@@ -24,4 +25,9 @@ type RealNRDBExecutor struct {
 // QueryWithContext executes an NRQL query using the real New Relic client.
 func (r *RealNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
 	return r.NRDB.QueryWithContext(ctx, accountID, query)
+}
+
+// PerformNRQLQueryWithContext executes an NRQL query using the enhanced New Relic client.
+func (r *RealNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+	return r.NRDB.PerformNRQLQuery(accountID, query)
 }
