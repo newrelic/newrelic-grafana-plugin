@@ -1,5 +1,5 @@
 // Package handler processes incoming query requests from Grafana and executes
-// NRQL queries against the New Relic API. It handles query parsing, validation,
+// NRQL against the New Relic API. It handles query parsing, validation,
 // execution, and response formatting with proper error handling.
 package handler
 
@@ -41,6 +41,45 @@ func shouldUseEnhancedQuery(query string) bool {
 	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
 	hasTimeseries := strings.Contains(strings.ToUpper(query), "TIMESERIES")
 	return hasFacet && hasTimeseries
+}
+
+// NormalizeQuery cleans up NRQL queries to fix common issues:
+// 1. Removes SQL-style comments (lines starting with --)
+// 2. Preserves all non-comment lines from the query
+// 3. Joins the preserved lines with spaces
+// 4. Removes excessive whitespace
+//
+// This function allows users to:
+// - Copy-paste NRQL queries from New Relic with line breaks
+// - Add SQL-style comments for documenting the query (these will be removed)
+// - Maintain clean query formatting without affecting execution
+func NormalizeQuery(query string) string {
+	// Handle line breaks and filter out SQL-style comments
+	lines := strings.Split(query, "\n")
+	var filteredLines []string
+
+	for _, line := range lines {
+		// Remove carriage returns
+		line = strings.ReplaceAll(line, "\r", "")
+
+		// Trim spaces from the beginning and end of the line
+		trimmedLine := strings.TrimSpace(line)
+
+		// Skip comment lines that start with --
+		if !strings.HasPrefix(trimmedLine, "--") && trimmedLine != "" {
+			filteredLines = append(filteredLines, trimmedLine)
+		}
+	}
+
+	// Join the filtered lines with spaces
+	query = strings.Join(filteredLines, " ")
+
+	// Replace multiple consecutive spaces with a single space
+	for strings.Contains(query, "  ") {
+		query = strings.ReplaceAll(query, "  ", " ")
+	}
+
+	return strings.TrimSpace(query)
 }
 
 // ExecuteNRQLQuery takes an NRDB query executor, account ID, and NRQL query string,
@@ -86,10 +125,15 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 
 	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID)
 
-	nrqlQueryText := "SELECT count(*) FROM Transaction SINCE 1 hour ago"
-	if qm.QueryText != "" {
-		nrqlQueryText = qm.QueryText
+	// Check if query is empty
+	if qm.QueryText == "" {
+		resp.Error = fmt.Errorf("query text cannot be empty")
+		log.DefaultLogger.Error("Query text is empty", "refId", query.RefID)
+		return resp
 	}
+
+	// Normalize the query by removing line breaks that cause issues
+	nrqlQueryText := NormalizeQuery(qm.QueryText)
 
 	accountID := config.Secrets.AccountId
 	if qm.AccountID > 0 {
