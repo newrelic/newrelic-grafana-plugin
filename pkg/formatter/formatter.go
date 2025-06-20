@@ -408,14 +408,18 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 	facetData := groupResultsByFacet(results, facetName)
 	log.DefaultLogger.Debug("Faceted aggregation - Grouped into %d facet groups", len(facetData))
 
-	// Get all field names (excluding time and facet fields)
+	// Get all field names and filter to only include aggregation fields
 	allFieldNames := extractFieldNames(results)
+
 	var aggregationFields []string
 	for _, fieldName := range allFieldNames {
-		if fieldName != utils.FacetFieldName {
+		// Exclude facet-related fields and only include aggregation fields
+		if fieldName != utils.FacetFieldName && !isFacetFieldName(fieldName, facetNames) && isAggregationField(fieldName) {
 			aggregationFields = append(aggregationFields, fieldName)
 		}
 	}
+
+	log.DefaultLogger.Debug("Faceted aggregation - Aggregation fields: %v", aggregationFields)
 
 	// Create separate frames for each facet value
 	for facetValue, facetResults := range facetData {
@@ -425,34 +429,14 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 
 		// Add aggregation fields with facet labels
 		for _, fieldName := range aggregationFields {
-			// Create field with facet label (matching Grafana Cloud pattern)
-			labels := map[string]string{
-				facetName: facetValue,
+			// Handle different aggregation field types
+			if strings.HasPrefix(fieldName, "percentile.") {
+				// Handle percentile objects - extract individual percentile values
+				addPercentileFields(frame, facetResults, fieldName, facetName, facetValue)
+			} else {
+				// Handle regular aggregation fields (sum.duration, average.duration, etc.)
+				addRegularAggregationField(frame, facetResults, fieldName, facetName, facetValue)
 			}
-
-			// Extract values for this field
-			values := make([]*float64, len(facetResults))
-			for i, result := range facetResults {
-				if result[fieldName] != nil && result[fieldName] != "" {
-					if val, ok := result[fieldName].(float64); ok {
-						values[i] = &val
-					} else if strVal, ok := result[fieldName].(string); ok && strVal != "" {
-						if parsed, err := parseNumericString(strVal); err == nil {
-							values[i] = &parsed
-						}
-					} else if intVal, ok := result[fieldName].(int); ok {
-						floatVal := float64(intVal)
-						values[i] = &floatVal
-					} else if int64Val, ok := result[fieldName].(int64); ok {
-						floatVal := float64(int64Val)
-						values[i] = &floatVal
-					}
-				}
-			}
-
-			// Create field with proper type info matching Grafana Cloud
-			field := data.NewField(fieldName, labels, values)
-			frame.Fields = append(frame.Fields, field)
 		}
 
 		resp.Frames = append(resp.Frames, frame)
@@ -460,6 +444,92 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 
 	log.DefaultLogger.Debug("Faceted aggregation - Total frames in response: %d", len(resp.Frames))
 	return resp
+}
+
+// addPercentileFields handles percentile objects by extracting individual percentile values
+func addPercentileFields(frame *data.Frame, facetResults []nrdb.NRDBResult, fieldName, facetName, facetValue string) {
+	// First pass: collect all percentile keys across all results
+	percentileKeys := make(map[string]bool)
+	for _, result := range facetResults {
+		if result[fieldName] != nil {
+			if objVal, ok := result[fieldName].(map[string]interface{}); ok {
+				for key := range objVal {
+					percentileKeys[key] = true
+				}
+			}
+		}
+	}
+
+	// Create a field for each percentile (e.g., percentile.duration.95)
+	for percentileKey := range percentileKeys {
+		fieldNameWithPercentile := fmt.Sprintf("%s.%s", fieldName, percentileKey)
+		labels := map[string]string{
+			facetName: facetValue,
+		}
+
+		// Extract values for this specific percentile
+		values := make([]*float64, len(facetResults))
+		for i, result := range facetResults {
+			if result[fieldName] != nil {
+				if objVal, ok := result[fieldName].(map[string]interface{}); ok {
+					if percentileVal, exists := objVal[percentileKey]; exists {
+						if floatVal, ok := percentileVal.(float64); ok {
+							values[i] = &floatVal
+						} else if strVal, ok := percentileVal.(string); ok {
+							if parsed, err := parseNumericString(strVal); err == nil {
+								values[i] = &parsed
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Create field with facet label
+		field := data.NewField(fieldNameWithPercentile, labels, values)
+		frame.Fields = append(frame.Fields, field)
+	}
+}
+
+// addRegularAggregationField handles regular aggregation fields (sum.duration, average.duration, etc.)
+func addRegularAggregationField(frame *data.Frame, facetResults []nrdb.NRDBResult, fieldName, facetName, facetValue string) {
+	labels := map[string]string{
+		facetName: facetValue,
+	}
+
+	// Extract values for this field
+	values := make([]*float64, len(facetResults))
+	for i, result := range facetResults {
+		if result[fieldName] != nil && result[fieldName] != "" {
+			if val, ok := result[fieldName].(float64); ok {
+				values[i] = &val
+			} else if strVal, ok := result[fieldName].(string); ok && strVal != "" {
+				if parsed, err := parseNumericString(strVal); err == nil {
+					values[i] = &parsed
+				}
+			} else if intVal, ok := result[fieldName].(int); ok {
+				floatVal := float64(intVal)
+				values[i] = &floatVal
+			} else if int64Val, ok := result[fieldName].(int64); ok {
+				floatVal := float64(int64Val)
+				values[i] = &floatVal
+			}
+		}
+	}
+
+	// Create field with facet label
+	field := data.NewField(fieldName, labels, values)
+	frame.Fields = append(frame.Fields, field)
+}
+
+// isFacetFieldName checks if a field name corresponds to a facet field name
+func isFacetFieldName(fieldName string, facetNames []string) bool {
+	for _, facetName := range facetNames {
+		if fieldName == facetName {
+			return true
+		}
+	}
+	return false
 }
 
 // groupResultsByFacet groups results by facet value for aggregation queries
@@ -867,7 +937,15 @@ func detectFieldType(results []nrdb.NRDBResult, fieldName string) string {
 			return "array" // uniques returns array of strings/values
 		}
 		if strings.HasPrefix(fieldName, "percentile.") {
-			return "object" // percentile returns object with percentile values
+			// Check if it's a specific percentile (e.g., percentile.duration.95) vs generic percentile object
+			// If the field name has more than 2 dots after "percentile", it's likely a specific percentile value
+			parts := strings.Split(fieldName, ".")
+			if len(parts) >= 3 {
+				// This is a specific percentile like "percentile.duration.95" - treat as number
+				return "number"
+			}
+			// Generic percentile field - treat as object
+			return "object"
 		}
 		if strings.HasPrefix(fieldName, "earliest.timestamp") || strings.HasPrefix(fieldName, "latest.timestamp") {
 			return "timestamp" // timestamp fields
