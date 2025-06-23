@@ -2,7 +2,14 @@
   "name": "newrelic-grafana-plugin",
   "version": "0.0.1",
   "description": "A comprehensive Grafana data source plugin for New Relic with full NRQL support",
-  "keywords": ["grafana", "newrelic", "nrql", "monitoring", "observability", "plugin"],
+  "keywords": [
+    "grafana",
+    "newrelic",
+    "nrql",
+    "monitoring",
+    "observability",
+    "plugin"
+  ],
   "homepage": "https://github.com/rahulkumartiwari/newrelic-grafana-plugin",
   "repository": {
     "type": "git",
@@ -27,7 +34,7 @@
     "name": "Rahul Kumar Tiwari",
     "url": "https://github.com/rahulkumartiwari"
   },
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@grafana/eslint-config": "^8.0.0",
     "@grafana/plugin-e2e": "^2.0.4",
