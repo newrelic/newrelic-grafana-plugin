@@ -1,7 +1,7 @@
 <a href="https://opensource.newrelic.com/oss-category/#community-plus"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/dark/Community_Plus.png"><source media="(prefers-color-scheme: light)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Community_Plus.png"><img alt="New Relic Open Source community plus project banner." src="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Community_Plus.png"></picture></a>
 
 [![GitHub release](https://img.shields.io/github/release/rahulkumartiwari/newrelic-grafana-plugin.svg)](https://github.com/rahulkumartiwari/newrelic-grafana-plugin/releases)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-Affero%203.0-orange.svg)](https://opensource.org/license/agpl-v3)
 
 # New Relic Grafana Plugin
 
