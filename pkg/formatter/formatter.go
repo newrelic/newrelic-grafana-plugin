@@ -900,7 +900,7 @@ func isAggregationField(fieldName string) bool {
 	aggregationPrefixes := []string{
 		"average.", "sum.", "min.", "max.", "count", "uniqueCount.", "latest.", "earliest.",
 		"median.", "percentile.", "rate.", "apdex.", "histogram.", "uniques.",
-		"getField.", "round.", "percentage.", "stddev.", "variance.",
+		"getField.", "round.", "percentage.", "stddev.", "variance.", "filter.",
 	}
 
 	// Check for exact matches (count is standalone)
@@ -908,9 +908,23 @@ func isAggregationField(fieldName string) bool {
 		"count",
 	}
 
+	// Common aliases and custom field names that are aggregations
+	aliasMatches := []string{
+		"Error Rate", "Success Rate", "Error %", "ErrorCount", "SuccessCount",
+		"Avg Duration", "Successes", "Errors", "f", "s", "t", "score", "duration",
+		"BucketMin", "BucketMax",
+	}
+
 	// Check exact matches first
 	for _, exact := range exactMatches {
 		if fieldName == exact {
+			return true
+		}
+	}
+
+	// Check alias matches
+	for _, alias := range aliasMatches {
+		if fieldName == alias {
 			return true
 		}
 	}
