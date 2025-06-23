@@ -6,7 +6,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Dependencies
 node_modules/
+vendor/
 
 # yarn
 .yarn/cache
@@ -25,7 +27,73 @@ pids
 lib-cov
 
 # Coverage directory used by tools like istanbul
-coverage
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
 dist/
@@ -40,16 +108,89 @@ ci/
 /playwright/.cache/
 /playwright/.auth/
 
-# Editor
-.idea
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-.eslintcache
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.cover
+coverage.out
+coverage.html
+
+# Go workspace file
+go.work.sum
+
+# Air (Go live reload) temp files
+tmp/
+
+# Grafana plugin build files
 dist/go_plugin_build_manifest
 
+# Plugin development
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-.DS_Store
+# IDE files
+*.sublime-project
+*.sublime-workspace
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
 
-coverage.out
-# Coverage report for unit tests
-coverage.html
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Archive files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Config files that might contain secrets
+config.json
+secrets.json
+.secrets
+
+# Local development certificates
+*.pem
+*.key
+*.crt
+
+# Docker volumes
+.docker/

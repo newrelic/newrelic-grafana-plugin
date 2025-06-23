@@ -1,62 +1,81 @@
+<a href="https://opensource.newrelic.com/oss-category/#community-plus"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/dark/Community_Plus.png"><source media="(prefers-color-scheme: light)" srcset="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Community_Plus.png"><img alt="New Relic Open Source community plus project banner." src="https://github.com/newrelic/opensource-website/raw/main/src/images/categories/Community_Plus.png"></picture></a>
+
+[![GitHub release](https://img.shields.io/github/release/rahulkumartiwari/newrelic-grafana-plugin.svg)](https://github.com/rahulkumartiwari/newrelic-grafana-plugin/releases)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # New Relic Grafana Plugin
 
-A high-quality, production-ready Grafana data source plugin for New Relic that enables you to query and visualize your New Relic data directly in Grafana dashboards.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Build Status](https://github.com/your-org/newrelic-grafana-plugin/workflows/CI/badge.svg)](https://github.com/your-org/newrelic-grafana-plugin/actions)
-[![Coverage Status](https://coveralls.io/repos/github/your-org/newrelic-grafana-plugin/badge.svg?branch=main)](https://coveralls.io/github/your-org/newrelic-grafana-plugin?branch=main)
+This plugin allows you to visualize New Relic data directly in Grafana dashboards using NRQL (New Relic Query Language). The plugin provides comprehensive support for all New Relic data types, aggregation functions, and advanced query capabilities.
 
 ## Features
 
-- 🔍 **NRQL Query Support**: Full support for New Relic Query Language (NRQL)
-- 🎨 **Visual Query Builder**: Intuitive query builder for common use cases
-- 🔒 **Secure Configuration**: API keys and sensitive data are stored securely
-- 🌍 **Multi-Region Support**: Support for both US and EU New Relic regions
-- ♿ **Accessibility**: Full WCAG 2.1 AA compliance
-- 🧪 **Comprehensive Testing**: 95%+ test coverage with unit and integration tests
-- 📝 **Template Variables**: Full support for Grafana template variables
-- 🚀 **Performance Optimized**: Efficient query processing and caching
+* Full NRQL (New Relic Query Language) support
+* Comprehensive aggregation functions (count, sum, average, percentile, etc.)
+* Faceted queries with proper grouping and time series handling
+* Multi-aggregation query support
+* Percentile calculations with object handling
+* Filter function support for error rate calculations
+* Template variable integration
+* Secure API key storage using Grafana's secure storage
+* Multi-region support (US and EU New Relic regions)
+* Time series data visualization with accurate time field handling
 
-## Quick Start
+## Current Support:
+
+This project targets Grafana data source plugins and supports:
+- Grafana 10.4.0 or higher
+- New Relic accounts with API access
+- Both US and EU New Relic regions
+- All major NRQL query types and aggregation functions
+
+## Installation
 
 ### Prerequisites
 
 - Grafana 10.4.0 or later
 - New Relic account with API access
-- Node.js 22+ (for development)
-- Go 1.21+ (for backend development)
+- New Relic User API Key
 
-### Installation
+### Manual Installation
 
-#### From Grafana Plugin Catalog (Recommended)
-
-1. Open Grafana and navigate to **Configuration** → **Plugins**
-2. Search for "New Relic"
-3. Click **Install** on the New Relic plugin
-4. Restart Grafana if required
-
-#### Manual Installation
-
-1. Download the latest release from the [releases page](https://github.com/your-org/newrelic-grafana-plugin/releases)
+1. Download the latest release from the [releases page](https://github.com/rahulkumartiwari/newrelic-grafana-plugin/releases)
 2. Extract the plugin to your Grafana plugins directory:
    ```bash
-   unzip newrelic-grafana-plugin-v1.0.0.zip -d /var/lib/grafana/plugins/
+   # For Linux/macOS
+   sudo unzip newrelic-grafana-plugin-v0.0.1.zip -d /var/lib/grafana/plugins/
+   
+   # For Docker
+   unzip newrelic-grafana-plugin-v0.0.1.zip -d /var/lib/grafana/plugins/
    ```
 3. Restart Grafana
+4. Enable the plugin in Grafana configuration if using unsigned plugins:
+   ```ini
+   [plugins]
+   allow_loading_unsigned_plugins = newrelic-grafana-plugin
+   ```
 
-### Configuration
+## Grafana Setup
 
 1. Navigate to **Configuration** → **Data Sources** in Grafana
 2. Click **Add data source** and select **New Relic**
-3. Configure the following settings:
+3. Configure the following settings (don't forget to put proper credentials):
 
-   - **API Key**: Your New Relic API key (found in New Relic → Account Settings → API Keys)
-   - **Account ID**: Your New Relic account ID (visible in the URL when logged into New Relic)
-   - **Region**: Select US or EU based on your New Relic account region
+```bash
+API Key: Your New Relic User API Key
+Account ID: Your New Relic account ID  
+Region: US or EU (based on your New Relic account region)
+```
 
 4. Click **Save & Test** to verify the connection
 
+### Finding Your New Relic Credentials
+
+- **Account ID**: Found in the URL when logged into New Relic (e.g., `https://one.newrelic.com/accounts/YOUR_ACCOUNT_ID`)
+- **API Key**: Create a User API Key in New Relic → User menu → API keys
+
 ## Usage
+
+See the examples below, and for more detail, see [New Relic NRQL documentation](https://docs.newrelic.com/docs/query-your-data/nrql-new-relic-query-language/get-started/introduction-nrql-new-relics-query-language/).
 
 ### Basic NRQL Queries
 
@@ -71,50 +90,101 @@ SELECT average(duration) FROM Transaction FACET appName SINCE 1 day ago
 
 -- Error rate over time
 SELECT percentage(count(*), WHERE error IS true) FROM Transaction TIMESERIES SINCE 1 hour ago
-
--- Custom attributes
-SELECT count(*) FROM Transaction WHERE `custom.userId` = '12345' SINCE 1 hour ago
 ```
 
-### Query Builder
+### [Aggregation Functions](https://docs.newrelic.com/docs/query-your-data/nrql-new-relic-query-language/get-started/nrql-syntax-clauses-functions/#functions)
 
-For common queries, use the visual query builder:
+The plugin recognizes and properly handles all New Relic aggregation functions:
 
-1. Select **Use Query Builder** in the query editor
-2. Choose your aggregation function (count, average, sum, etc.)
-3. Select the event type (Transaction, Span, Metric, etc.)
-4. Add WHERE conditions as needed
-5. Configure time range and other options
+```sql
+-- Basic aggregations
+SELECT count(*), sum(duration), average(duration), min(duration), max(duration) FROM Transaction
 
-### Template Variables
+-- Statistical functions
+SELECT percentile(duration, 95), median(duration), stddev(duration) FROM Transaction
+
+-- Unique value functions
+SELECT uniqueCount(userId), uniques(appName) FROM Transaction
+
+-- Time-based functions
+SELECT latest(timestamp), earliest(timestamp), rate(count(*), 1 minute) FROM Transaction
+```
+
+### [Faceted Queries](https://docs.newrelic.com/docs/query-your-data/nrql-new-relic-query-language/get-started/nrql-syntax-clauses-functions/#sel-facet)
+
+Advanced support for faceted queries with proper grouping:
+
+```sql
+-- Faceted aggregation
+SELECT average(duration) FROM Transaction FACET appName SINCE 1 day ago
+
+-- Faceted time series
+SELECT count(*) FROM Transaction FACET request.uri TIMESERIES 1 hour SINCE 1 day ago
+
+-- Multi-aggregation with facets
+SELECT sum(duration), average(duration), count(*) FROM Transaction FACET appName TIMESERIES SINCE 1 hour ago
+```
+
+### [Time Series Queries](https://docs.newrelic.com/docs/query-your-data/nrql-new-relic-query-language/get-started/nrql-syntax-clauses-functions/#sel-timeseries)
+
+Native support for TIMESERIES queries:
+
+```sql
+-- Basic time series
+SELECT count(*) FROM Transaction TIMESERIES SINCE 1 hour ago
+
+-- Time series with custom intervals
+SELECT average(duration) FROM Transaction TIMESERIES 5 minutes SINCE 1 day ago
+
+-- Percentile analysis over time
+SELECT percentile(duration, 95) FROM Transaction TIMESERIES 1 hour SINCE 1 day ago
+```
+
+### [Template Variables](https://grafana.com/docs/grafana/latest/dashboards/variables/)
 
 The plugin supports Grafana template variables in NRQL queries:
 
 ```sql
--- Using dashboard time range
-SELECT count(*) FROM Transaction WHERE appName = '$app' $__timeFilter()
+-- Using dashboard variables
+SELECT count(*) FROM Transaction WHERE appName = '$app' SINCE $__from UNTIL $__to
 
--- Using custom variables
-SELECT average(duration) FROM Transaction WHERE region = '$region' SINCE $__from
+-- Using facet variables
+SELECT average(duration) FROM Transaction WHERE region = '$region' TIMESERIES
 ```
 
-### Supported Event Types
+### [Filter Functions](https://docs.newrelic.com/docs/query-your-data/nrql-new-relic-query-language/get-started/nrql-syntax-clauses-functions/#func-filter)
 
-- **Transaction**: Application performance data
-- **Span**: Distributed tracing data
-- **Metric**: Custom and system metrics
-- **Log**: Log data (if enabled)
-- **Error**: Error tracking data
-- **PageView**: Browser monitoring data
-- **Mobile**: Mobile application data
+Support for filter() function results:
+
+```sql
+-- Error rate calculation
+SELECT filter(count(*), WHERE error IS true) as 'Error Count', 
+       filter(count(*), WHERE error IS false) as 'Success Count' 
+FROM Transaction TIMESERIES
+```
+
+### Field Naming
+
+The plugin preserves New Relic's field naming conventions:
+- Aggregations: `sum.duration`, `average.responseTime`, `count`
+- Percentiles: `percentile.duration.95`, `percentile.duration.99`
+- Apdex: `apdex.score`, `apdex.s`, `apdex.t`, `apdex.f`
+- Filters: `ErrorCount`, `SuccessCount`, `Error Rate`
 
 ## Development
+
+### Prerequisites
+
+- Node.js 22+
+- Go 1.21+
+- Git
+- Docker (optional, for containerized development)
 
 ### Setup
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-org/newrelic-grafana-plugin.git
+   git clone https://github.com/rahulkumartiwari/newrelic-grafana-plugin.git
    cd newrelic-grafana-plugin
    ```
 
@@ -133,130 +203,38 @@ SELECT average(duration) FROM Transaction WHERE region = '$region' SINCE $__from
    npm run dev
    ```
 
-### Testing
-
-Run the test suite:
+### Build Commands
 
 ```bash
-# Unit tests
-npm test
+# Development build with watching
+npm run dev
 
-# Integration tests
+# Production build
+npm run build
+
+# Run tests
 npm run test:ci
 
-# E2E tests
-npm run e2e
-
-# Test coverage
-npm run test:coverage
-```
-
-### Code Quality
-
-The project maintains high code quality standards:
-
-```bash
-# Linting
+# Lint code
 npm run lint
 
 # Type checking
 npm run typecheck
-
-# Format code
-npm run lint:fix
 ```
 
 ### Docker Development
 
-Use Docker for isolated development:
+Start a complete development environment with Grafana:
 
 ```bash
-# Start Grafana with the plugin
 npm run server
-
-# Access Grafana at http://localhost:3000
-# Default credentials: admin/admin
 ```
 
-## Architecture
-
-### Frontend (React/TypeScript)
-
-- **Components**: Modular React components with TypeScript
-- **Validation**: Comprehensive input validation and sanitization
-- **Accessibility**: WCAG 2.1 AA compliant
-- **Testing**: Jest + React Testing Library
-
-### Backend (Go)
-
-- **API Client**: Secure New Relic GraphQL API integration
-- **Query Processing**: NRQL query parsing and validation
-- **Caching**: Intelligent response caching
-- **Security**: Secure credential handling
-
-### Key Files
-
-```
-src/
-├── components/
-│   ├── ConfigEditor.tsx      # Data source configuration
-│   ├── QueryEditor.tsx       # Query editor interface
-│   └── NRQLQueryBuilder.tsx  # Visual query builder
-├── utils/
-│   ├── validation.ts         # Input validation utilities
-│   └── logger.ts            # Secure logging utilities
-├── types.ts                 # TypeScript type definitions
-└── datasource.ts           # Main data source implementation
-
-pkg/
-├── plugin/                  # Go backend implementation
-├── client/                  # New Relic API client
-└── models/                  # Data models
-```
-
-## Security
-
-### Data Protection
-
-- API keys are stored securely and never exposed to the frontend
-- All user inputs are validated and sanitized
-- Secure logging prevents sensitive data exposure
-- HTTPS-only communication with New Relic APIs
-
-### Best Practices
-
-- Regular security audits
-- Dependency vulnerability scanning
-- Secure coding standards
-- Input validation and output encoding
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes with tests
-4. Run the test suite: `npm test`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-### Code Standards
-
-- Follow TypeScript/React best practices
-- Maintain 95%+ test coverage
-- Include comprehensive documentation
-- Follow semantic versioning
+Access Grafana at `http://localhost:3000` (admin/admin)
 
 ## Troubleshooting
 
-### Common Issues
-
-#### Connection Failed
-
+### Connection Failed
 **Problem**: "Failed to connect to New Relic API"
 
 **Solutions**:
@@ -265,75 +243,52 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - Ensure you've selected the correct region (US/EU)
 - Verify network connectivity to New Relic APIs
 
-#### Query Errors
-
+### Query Errors
 **Problem**: "Invalid NRQL query"
 
 **Solutions**:
 - Validate your NRQL syntax using New Relic's query builder
 - Check that event types and attributes exist in your account
-- Ensure proper escaping of special characters
+- Ensure proper escaping of special characters in strings
 - Verify time range syntax
 
-#### Performance Issues
-
-**Problem**: Slow query responses
+### Empty Results
+**Problem**: Query returns no data
 
 **Solutions**:
-- Optimize your NRQL queries with appropriate LIMIT clauses
-- Use FACET sparingly for large datasets
-- Consider shorter time ranges for complex queries
-- Implement query caching where appropriate
+- Verify the time range contains data for your query
+- Check that the event type and filters match your data
+- Ensure your account has data for the specified time range
+- Try a simpler query first to verify connectivity
 
 ### Debug Mode
 
-Enable debug logging by setting the environment variable:
-
-```bash
-export NODE_ENV=development
-```
-
-This will provide detailed logging information in the browser console.
-
-## API Reference
-
-### Configuration Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `apiKey` | string | Yes | New Relic API key |
-| `accountId` | number | Yes | New Relic account ID |
-| `region` | 'US' \| 'EU' | No | New Relic region (default: US) |
-| `apiUrl` | string | No | Custom API endpoint URL |
-
-### Query Options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `queryText` | string | NRQL query string |
-| `accountID` | number | Override account ID for this query |
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Enable debug logging by setting the log level to "debug" in Grafana configuration. This will provide detailed logging information for troubleshooting.
 
 ## Support
 
-- 📖 [Documentation](https://github.com/your-org/newrelic-grafana-plugin/wiki)
-- 🐛 [Issue Tracker](https://github.com/your-org/newrelic-grafana-plugin/issues)
-- 💬 [Discussions](https://github.com/your-org/newrelic-grafana-plugin/discussions)
-- 📧 [Email Support](mailto:support@yourorg.com)
+New Relic hosts and moderates an online forum where customers, users, maintainers, contributors, and New Relic employees can discuss and collaborate:
 
-## Acknowledgments
+[forum.newrelic.com](https://forum.newrelic.com/).
 
-- [Grafana](https://grafana.com/) for the excellent plugin framework
-- [New Relic](https://newrelic.com/) for the comprehensive observability platform
-- The open-source community for valuable feedback and contributions
+## Contribute
 
----
+We encourage your contributions to improve this project! Keep in mind that when you submit your pull request, you'll need to sign the CLA via the click-through using CLA-Assistant. You only have to sign the CLA one time per project.
 
-Made with ❤️ by the [Your Organization](https://yourorg.com) team
+If you have any questions, or to execute our corporate CLA (which is required if your contribution is on behalf of a company), drop us an email at opensource@newrelic.com.
+
+**A note about vulnerabilities**
+
+As noted in our [security policy](SECURITY.md), New Relic is committed to the privacy and security of our customers and their data. We believe that providing coordinated disclosure by security researchers and engaging with the security community are important means to achieve our security goals.
+
+If you believe you have found a security vulnerability in this project or any of New Relic's products or websites, we welcome and greatly appreciate you reporting it to New Relic through [HackerOne](https://hackerone.com/newrelic).
+
+If you would like to contribute to this project, review [these guidelines](./CONTRIBUTING.md).
+
+To all contributors, we thank you! Without your contribution, this project would not be what it is today.
+
+## License
+
+The `newrelic-grafana-plugin` is licensed under the [Apache 2.0](http://apache.org/licenses/LICENSE-2.0.txt) License.
+
+The `newrelic-grafana-plugin` may use source code from third-party libraries. When used, these libraries will be outlined in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

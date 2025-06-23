@@ -1,458 +1,87 @@
-# Contributing to New Relic Grafana Plugin
+# Contributing
 
-Thank you for your interest in contributing to the New Relic Grafana Plugin! This document provides guidelines and information for contributors.
+Contributions are always welcome. Before contributing please read the
+[code of conduct](https://github.com/newrelic/.github/blob/main/CODE_OF_CONDUCT.md) and [search the issue tracker](../../issues); your issue may have already been discussed or fixed in `main`. To contribute,
+[fork](https://help.github.com/articles/fork-a-repo/) this repository, commit your changes, and [send a Pull Request](https://help.github.com/articles/using-pull-requests/).
 
-## Table of Contents
+Note that our [code of conduct](https://github.com/newrelic/.github/blob/main/CODE_OF_CONDUCT.md) applies to all platforms and venues related to this project; please follow it in all your interactions with the project and its participants.
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Contributing Guidelines](#contributing-guidelines)
-- [Code Standards](#code-standards)
-- [Testing](#testing)
-- [Pull Request Process](#pull-request-process)
-- [Issue Reporting](#issue-reporting)
-- [Security](#security)
+## Feature Requests
 
-## Code of Conduct
+Feature requests should be submitted in the [Issue tracker](../../issues), with a description of the expected behavior & use case, where they'll remain closed until sufficient interest, [e.g. :+1: reactions](https://help.github.com/articles/about-discussions-in-issues-and-pull-requests/), has been [shown by the community](../../issues?q=label%3A%22votes+needed%22+sort%3Areactions-%2B1-desc).
+Before submitting an Issue, please search for similar ones in the
+[closed issues](../../issues?q=is%3Aissue+is%3Aclosed+label%3Aenhancement).
 
-This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to [conduct@yourorg.com](mailto:conduct@yourorg.com).
+## Pull Requests
 
-## Getting Started
+1. Ensure any install or build dependencies are removed before the end of the layer when doing a build.
+2. Increase the version numbers in any examples files and the README.md to the new version that this Pull Request would represent. The versioning scheme we use is [SemVer](http://semver.org/).
+3. You may merge the Pull Request in once you have the sign-off of two other developers, or if you do not have permission to do that, you may request the second reviewer to merge it for you.
+
+## Development Setup
 
 ### Prerequisites
 
-Before contributing, ensure you have:
+- Node.js 22+
+- Go 1.21+
+- Git
+- Docker (optional, for containerized development)
 
-- Node.js 22+ installed
-- Go 1.21+ installed (for backend development)
-- Git configured with your name and email
-- A GitHub account
-- Basic knowledge of TypeScript, React, and Go
+### Setup
 
-### Development Setup
-
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
+1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/newrelic-grafana-plugin.git
+   git clone https://github.com/rahulkumartiwari/newrelic-grafana-plugin.git
    cd newrelic-grafana-plugin
    ```
 
-3. **Add the upstream remote**:
-   ```bash
-   git remote add upstream https://github.com/your-org/newrelic-grafana-plugin.git
-   ```
-
-4. **Install dependencies**:
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-5. **Build the project**:
+3. Build the plugin:
    ```bash
    npm run build
    ```
 
-6. **Start development server**:
+4. Start development server:
    ```bash
    npm run dev
    ```
 
-7. **Run tests** to ensure everything works:
-   ```bash
-   npm test
-   ```
+### Testing
 
-## Contributing Guidelines
-
-### Types of Contributions
-
-We welcome various types of contributions:
-
-- 🐛 **Bug fixes**
-- ✨ **New features**
-- 📚 **Documentation improvements**
-- 🧪 **Test coverage improvements**
-- 🎨 **UI/UX enhancements**
-- ⚡ **Performance optimizations**
-- 🔒 **Security improvements**
-
-### Before You Start
-
-1. **Check existing issues** to avoid duplicate work
-2. **Create an issue** for significant changes to discuss the approach
-3. **Keep changes focused** - one feature/fix per PR
-4. **Follow the coding standards** outlined below
-
-## Code Standards
-
-### TypeScript/React Frontend
-
-#### Code Style
-
-- Use **TypeScript** for all new code
-- Follow **React functional components** with hooks
-- Use **arrow functions** for component definitions
-- Implement **proper error boundaries**
-- Include **comprehensive JSDoc comments**
-
-```typescript
-/**
- * Validates a New Relic API key format
- * @param apiKey - The API key to validate
- * @returns Validation result with success status and optional error message
- */
-export function validateApiKey(apiKey: string): ValidationResult {
-  // Implementation
-}
-```
-
-#### Component Structure
-
-```typescript
-import React, { useState, useCallback } from 'react';
-import { ComponentProps } from './types';
-
-/**
- * Component description
- */
-export function MyComponent({ prop1, prop2 }: ComponentProps) {
-  const [state, setState] = useState<StateType>(initialState);
-
-  const handleAction = useCallback(() => {
-    // Implementation
-  }, [dependencies]);
-
-  return (
-    <div>
-      {/* JSX */}
-    </div>
-  );
-}
-```
-
-#### Accessibility Requirements
-
-- Include **ARIA labels** for all interactive elements
-- Provide **keyboard navigation** support
-- Ensure **color contrast** meets WCAG 2.1 AA standards
-- Add **screen reader** support
-- Test with **accessibility tools**
-
-```typescript
-<Button
-  aria-label="Run NRQL query"
-  aria-describedby="query-help"
-  onClick={handleRunQuery}
->
-  Run Query
-</Button>
-```
-
-### Go Backend
-
-#### Code Style
-
-- Follow **Go conventions** and **gofmt** formatting
-- Use **meaningful variable names**
-- Include **comprehensive comments**
-- Implement **proper error handling**
-- Follow **Go project layout** standards
-
-```go
-// ValidateNRQLQuery validates an NRQL query string
-func ValidateNRQLQuery(query string) error {
-    if strings.TrimSpace(query) == "" {
-        return errors.New("query cannot be empty")
-    }
-    // Additional validation
-    return nil
-}
-```
-
-### General Standards
-
-#### File Organization
-
-```
-src/
-├── components/          # React components
-│   ├── __tests__/      # Component tests
-│   └── ComponentName.tsx
-├── utils/              # Utility functions
-│   ├── __tests__/      # Utility tests
-│   └── utilityName.ts
-├── types.ts            # Type definitions
-└── datasource.ts       # Main datasource
-```
-
-#### Naming Conventions
-
-- **Files**: PascalCase for components, camelCase for utilities
-- **Variables**: camelCase
-- **Constants**: UPPER_SNAKE_CASE
-- **Types/Interfaces**: PascalCase
-- **Functions**: camelCase with descriptive names
-
-#### Import Organization
-
-```typescript
-// External libraries
-import React from 'react';
-import { Button } from '@grafana/ui';
-
-// Internal utilities
-import { validateApiKey } from '../utils/validation';
-import { logger } from '../utils/logger';
-
-// Types
-import { NewRelicQuery } from '../types';
-
-// Relative imports
-import { ComponentName } from './ComponentName';
-```
-
-## Testing
-
-### Test Requirements
-
-- **95%+ code coverage** for all new code
-- **Unit tests** for all functions and components
-- **Integration tests** for complex workflows
-- **E2E tests** for critical user paths
-
-### Testing Standards
-
-#### Unit Tests
-
-```typescript
-describe('validateApiKey', () => {
-  it('should validate correct API key format', () => {
-    const result = validateApiKey('NRAK1234567890abcdef1234567890abcdef1234');
-    expect(result.isValid).toBe(true);
-  });
-
-  it('should reject invalid API key format', () => {
-    const result = validateApiKey('invalid-key');
-    expect(result.isValid).toBe(false);
-    expect(result.message).toBe('API key must be 40 characters long and contain only alphanumeric characters');
-  });
-});
-```
-
-#### Component Tests
-
-```typescript
-describe('ConfigEditor', () => {
-  it('should render all configuration fields', () => {
-    render(<ConfigEditor {...defaultProps} />);
-    
-    expect(screen.getByLabelText('New Relic API Key')).toBeInTheDocument();
-    expect(screen.getByLabelText('New Relic Account ID')).toBeInTheDocument();
-  });
-
-  it('should validate input on change', async () => {
-    const user = userEvent.setup();
-    render(<ConfigEditor {...defaultProps} />);
-    
-    const input = screen.getByTestId('api-key-input');
-    await user.type(input, 'invalid-key');
-    
-    expect(screen.getByText('Invalid API key format')).toBeInTheDocument();
-  });
-});
-```
-
-### Running Tests
+Run the comprehensive test suite:
 
 ```bash
-# Run all tests
-npm test
+# Frontend tests
+npm run test:ci
 
-# Run tests in watch mode
-npm run test:watch
+# Backend tests
+go test -v ./pkg/...
 
-# Run tests with coverage
-npm run test:coverage
+# Linting
+npm run lint
 
-# Run E2E tests
-npm run e2e
+# Type checking
+npm run typecheck
 ```
 
-## Pull Request Process
+### Code Standards
 
-### Before Submitting
+- **Frontend**: Follow TypeScript/React best practices with ESLint configuration
+- **Backend**: Follow Go conventions and pass `go vet` and `golangci-lint`
+- **Testing**: Maintain test coverage for new features
+- **Documentation**: Update README.md and relevant documentation for new features
 
-1. **Sync with upstream**:
-   ```bash
-   git fetch upstream
-   git checkout main
-   git merge upstream/main
-   ```
+## Contributor License Agreement
 
-2. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+Keep in mind that when you submit your Pull Request, you'll need to sign the CLA via the click-through using CLA-Assistant. If you'd like to execute our corporate CLA, or if you have any questions, please drop us an email at opensource@newrelic.com.
 
-3. **Make your changes** following the code standards
+For more information about CLAs, please check out Alex Russell's excellent post,
+["Why Do I Need to Sign This?"](https://infrequently.org/2008/06/why-do-i-need-to-sign-this/).
 
-4. **Add tests** for your changes
+## Slack
 
-5. **Run the test suite**:
-   ```bash
-   npm run test:ci
-   npm run lint
-   npm run typecheck
-   ```
-
-6. **Update documentation** if needed
-
-### Commit Guidelines
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-type(scope): description
-
-[optional body]
-
-[optional footer]
-```
-
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes
-- `refactor`: Code refactoring
-- `test`: Test additions/changes
-- `chore`: Build process or auxiliary tool changes
-
-**Examples:**
-```
-feat(query-builder): add support for SELECT * queries
-
-Add new aggregation option for SELECT * queries in the visual query builder.
-Includes proper parsing and validation for raw data queries.
-
-Closes #123
-```
-
-### Pull Request Template
-
-When creating a PR, include:
-
-- **Description** of changes
-- **Type of change** (bug fix, feature, etc.)
-- **Testing** performed
-- **Screenshots** for UI changes
-- **Breaking changes** if any
-- **Related issues** (closes #123)
-
-### Review Process
-
-1. **Automated checks** must pass (CI, tests, linting)
-2. **Code review** by at least one maintainer
-3. **Manual testing** for significant changes
-4. **Documentation review** if applicable
-5. **Security review** for security-related changes
-
-## Issue Reporting
-
-### Bug Reports
-
-Include:
-
-- **Clear description** of the issue
-- **Steps to reproduce** the problem
-- **Expected vs actual behavior**
-- **Environment details** (Grafana version, browser, OS)
-- **Screenshots/logs** if applicable
-- **Minimal reproduction** case
-
-### Feature Requests
-
-Include:
-
-- **Clear description** of the feature
-- **Use case** and motivation
-- **Proposed solution** (if any)
-- **Alternative solutions** considered
-- **Additional context** or examples
-
-### Issue Labels
-
-- `bug`: Something isn't working
-- `enhancement`: New feature or request
-- `documentation`: Improvements or additions to docs
-- `good first issue`: Good for newcomers
-- `help wanted`: Extra attention is needed
-- `priority/high`: High priority issue
-- `security`: Security-related issue
-
-## Security
-
-### Reporting Security Issues
-
-**DO NOT** create public issues for security vulnerabilities. Instead:
-
-1. Email [security@yourorg.com](mailto:security@yourorg.com)
-2. Include detailed description of the vulnerability
-3. Provide steps to reproduce if possible
-4. Allow time for investigation and fix
-
-### Security Guidelines
-
-- **Never commit** API keys or sensitive data
-- **Validate all inputs** on both frontend and backend
-- **Use secure logging** to prevent data exposure
-- **Follow OWASP** security guidelines
-- **Keep dependencies** up to date
-
-## Development Workflow
-
-### Branch Strategy
-
-- `main`: Production-ready code
-- `develop`: Integration branch for features
-- `feature/*`: Feature development branches
-- `hotfix/*`: Critical bug fixes
-- `release/*`: Release preparation branches
-
-### Release Process
-
-1. **Create release branch** from `develop`
-2. **Update version** numbers and changelog
-3. **Run full test suite** and manual testing
-4. **Create pull request** to `main`
-5. **Tag release** after merge
-6. **Deploy** to production
-
-## Getting Help
-
-### Communication Channels
-
-- **GitHub Issues**: Bug reports and feature requests
-- **GitHub Discussions**: General questions and ideas
-- **Email**: [dev@yourorg.com](mailto:dev@yourorg.com) for development questions
-- **Slack**: [Join our workspace](https://yourorg.slack.com) for real-time chat
-
-### Documentation
-
-- **API Documentation**: Generated from code comments
-- **User Guide**: In the main README
-- **Developer Guide**: This document
-- **Architecture Guide**: In the `/docs` folder
-
-## Recognition
-
-Contributors will be recognized in:
-
-- **CONTRIBUTORS.md** file
-- **Release notes** for significant contributions
-- **Annual contributor** appreciation posts
-- **Grafana community** showcases
-
-Thank you for contributing to the New Relic Grafana Plugin! 🎉 
+We host a public Slack with a dedicated channel for contributors and maintainers of open source projects hosted by New Relic. If you are contributing to this project, you're welcome to request access to the #oss-contributors channel in the newrelicusers.slack.com workspace. To request access, please use this [link](https://join.slack.com/t/newrelicusers/shared_invite/zt-1ayj69rzm-~go~Eo1whIQGYnu3qi15ng). 
