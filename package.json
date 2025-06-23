@@ -1,6 +1,6 @@
 {
   "name": "newrelic-grafana-plugin",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A comprehensive Grafana data source plugin for New Relic with full NRQL support",
   "keywords": [
     "grafana",
