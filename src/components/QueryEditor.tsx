@@ -23,7 +23,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
 
   // Local state for the raw NRQL text
   const [rawNRQL, setRawNRQL] = useState(query.queryText || '');
-  
+
   // Track if user is currently typing to prevent cursor jumps
   const isUserTypingRef = useRef(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -36,18 +36,18 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       setValidationError('Query cannot be empty');
       return false;
     }
-    
+
     try {
       const validation = validateNrqlQuery(queryText);
       setValidationError(validation.isValid ? '' : validation.message || 'Invalid query');
-      
+
       if (!validation.isValid) {
         logger.warn('Query validation failed', {
           refId: query.refId,
           error: validation.message,
         });
       }
-      
+
       return validation.isValid;
     } catch (error) {
       logger.error('Error validating query', error as Error, {
@@ -82,26 +82,26 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const handleNRQLChange = useCallback((queryText: string) => {
     // Mark that user is actively typing
     isUserTypingRef.current = true;
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     // Set timeout to mark typing as finished
     typingTimeoutRef.current = setTimeout(() => {
       isUserTypingRef.current = false;
     }, 500);
-    
+
     setRawNRQL(queryText);
-    
+
     // Clear validation errors while typing - don't show errors until user tries to run
     setValidationError('');
-    
+
     // For time integration, we need to be careful not to modify the text that's being typed
     // Only apply time integration when the user stops typing
     const finalQuery = queryText; // Keep the raw user input
-    
+
     const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
@@ -111,15 +111,15 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
    */
   const handleBuilderQueryChange = useCallback((queryText: string) => {
     setRawNRQL(queryText); // Keep in sync
-    
+
     // Clear validation errors while building query
     setValidationError('');
-    
+
     // Apply time integration if enabled
-    const finalQuery = useGrafanaTime ? 
-      buildNRQLWithTimeIntegration(queryText, true) : 
+    const finalQuery = useGrafanaTime ?
+      buildNRQLWithTimeIntegration(queryText, true) :
       queryText;
-    
+
     const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
@@ -129,9 +129,9 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
    */
   const handleTimeIntegrationToggle = useCallback((enabled: boolean) => {
     setUseGrafanaTime(enabled);
-    
+
     let updatedQueryText = rawNRQL;
-    
+
     if (enabled) {
       // Enable Grafana time integration
       updatedQueryText = buildNRQLWithTimeIntegration(rawNRQL, true);
@@ -142,25 +142,25 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         /SINCE\s+\$__from\s+UNTIL\s+\$__to/gi,
         'SINCE 1 hour ago'
       );
-      
+
       // Also handle any remaining old WHERE format (for backwards compatibility)
       updatedQueryText = updatedQueryText.replace(
         /WHERE\s+timestamp\s*>=\s*\$__from\s*AND\s*timestamp\s*<=\s*\$__to/gi,
         'SINCE 1 hour ago'
       );
     }
-    
-    const updatedQuery = { 
-      ...query, 
-      queryText: updatedQueryText, 
-      useGrafanaTime: enabled 
+
+    const updatedQuery = {
+      ...query,
+      queryText: updatedQueryText,
+      useGrafanaTime: enabled
     };
-    
+
     onChange(updatedQuery);
     setRawNRQL(updatedQueryText);
     // Clear validation errors when changing time integration
     setValidationError('');
-    
+
     logger.debug('Time integration toggled', {
       refId: query.refId,
       enabled,
@@ -174,7 +174,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const toggleQueryBuilder = useCallback(() => {
     const newMode = !useQueryBuilder;
     setUseQueryBuilder(newMode);
-    
+
     logger.debug('Query editor mode changed', {
       refId: query.refId,
       mode: newMode ? 'builder' : 'text',
@@ -183,14 +183,14 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     if (newMode) {
       // When switching to query builder, ensure the query is in a valid format
       if (!query.queryText || query.queryText.trim() === '') {
-        const defaultQuery = useGrafanaTime 
+        const defaultQuery = useGrafanaTime
           ? 'SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to'
           : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
         setRawNRQL(defaultQuery);
         onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
       }
     }
-    
+
     // Clear validation errors when switching modes
     setValidationError('');
   }, [useQueryBuilder, query, onChange, useGrafanaTime]);
@@ -201,12 +201,12 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const handleRunQuery = useCallback(() => {
     try {
       // Validate only when running the query
-      const queryToValidate = useGrafanaTime ? 
-        buildNRQLWithTimeIntegration(query.queryText || '', true) : 
+      const queryToValidate = useGrafanaTime ?
+        buildNRQLWithTimeIntegration(query.queryText || '', true) :
         query.queryText || '';
-      
+
       const isValid = validateQuery(queryToValidate);
-      
+
       if (!isValid) {
         logger.warn('Attempted to run invalid query', {
           refId: query.refId,
@@ -215,7 +215,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         return; // Don't run the query if validation fails
       }
 
-      logger.debug('Running query', { 
+      logger.debug('Running query', {
         refId: query.refId,
         useGrafanaTime,
         hasTimeVars: hasGrafanaTimeVariables(query.queryText || ''),
@@ -231,10 +231,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   return (
     <div style={{ padding: '8px 0' }}>
       {/* Header Controls */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: '12px',
         gap: '8px'
       }}>
@@ -272,7 +272,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
               data-testid="grafana-time-toggle"
             />
           </div>
-          
+
           <Button
             variant="primary"
             size="sm"
@@ -300,7 +300,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           <TextArea
             value={rawNRQL}
             onChange={(e) => handleNRQLChange(e.currentTarget.value)}
-            placeholder={useGrafanaTime 
+            placeholder={useGrafanaTime
               ? "SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to"
               : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
             }
@@ -310,23 +310,23 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           />
 
           {/* Help Text */}
-          <div id="nrql-help" style={{ 
-            fontSize: '11px', 
-            color: '#8e8e8e', 
+          <div id="nrql-help" style={{
+            fontSize: '11px',
+            color: '#8e8e8e',
             marginTop: '6px',
             display: 'flex',
             alignItems: 'center',
             gap: '4px'
           }}>
             <Icon name="question-circle" size="xs" />
-            {useGrafanaTime 
+            {useGrafanaTime
               ? 'Use $__from, $__to variables for automatic time picker integration'
               : 'Use manual time clauses like "SINCE 1 hour ago"'
             }
           </div>
-          
+
           {/* Status Indicator - only show validation errors */}
-          <div style={{ 
+          <div style={{
             marginTop: '8px',
             minHeight: '20px', // Reserve space to prevent layout shift
             display: 'flex',
@@ -335,7 +335,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           }}>
             {validationError ? (
               // Error state only - no success messages
-              <div style={{ 
+              <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',

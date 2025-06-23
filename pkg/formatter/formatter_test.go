@@ -314,6 +314,76 @@ func TestFormatQueryResults(t *testing.T) {
 				assert.Equal(t, 800.50, *sumField2.At(0).(*float64))
 			},
 		},
+		{
+			name: "faceted aggregation timeseries query (percentile.duration)",
+			results: &nrdb.NRDBResultContainer{
+				Metadata: nrdb.NRDBMetadata{
+					Facets: []string{"request.uri"},
+				},
+				Results: []nrdb.NRDBResult{
+					{
+						"beginTimeSeconds":    float64(1750148571),
+						"endTimeSeconds":      float64(1750148631),
+						"percentile.duration": map[string]interface{}{"95": 156.75},
+						"facet":               []interface{}{"/users"},
+					},
+					{
+						"beginTimeSeconds":    float64(1750148631),
+						"endTimeSeconds":      float64(1750148691),
+						"percentile.duration": map[string]interface{}{"95": 189.25},
+						"facet":               []interface{}{"/users"},
+					},
+					{
+						"beginTimeSeconds":    float64(1750148571),
+						"endTimeSeconds":      float64(1750148631),
+						"percentile.duration": map[string]interface{}{"95": 98.50},
+						"facet":               []interface{}{"/users12"},
+					},
+				},
+			},
+			query: query,
+			validate: func(t *testing.T, resp *backend.DataResponse) {
+				require.Len(t, resp.Frames, 2) // One frame per facet value
+
+				// Collect frames by facet for order-independent testing
+				framesByFacet := make(map[string]*data.Frame)
+				for _, frame := range resp.Frames {
+					require.Len(t, frame.Fields, 2) // time and percentile.duration.95 fields
+					percentileField := frame.Fields[1]
+					assert.Equal(t, "percentile.duration.95", percentileField.Name)
+					facetValue := percentileField.Labels["request.uri"]
+					framesByFacet[facetValue] = frame
+				}
+
+				// Verify /users frame (should have 2 time points)
+				usersFrame, exists := framesByFacet["/users"]
+				require.True(t, exists, "Should have frame for /users")
+				require.Len(t, usersFrame.Fields, 2)
+
+				usersTimeField := usersFrame.Fields[0]
+				assert.Equal(t, "time", usersTimeField.Name)
+				assert.Equal(t, 2, usersTimeField.Len()) // 2 time points for /users
+
+				usersPercentileField := usersFrame.Fields[1]
+				assert.Equal(t, "percentile.duration.95", usersPercentileField.Name)
+				assert.Equal(t, "/users", usersPercentileField.Labels["request.uri"])
+				assert.Equal(t, 2, usersPercentileField.Len()) // 2 percentile values
+				// Verify the actual values
+				assert.Equal(t, 156.75, *usersPercentileField.At(0).(*float64))
+				assert.Equal(t, 189.25, *usersPercentileField.At(1).(*float64))
+
+				// Verify /users12 frame (should have 1 time point)
+				users12Frame, exists := framesByFacet["/users12"]
+				require.True(t, exists, "Should have frame for /users12")
+				require.Len(t, users12Frame.Fields, 2)
+
+				users12PercentileField := users12Frame.Fields[1]
+				assert.Equal(t, "percentile.duration.95", users12PercentileField.Name)
+				assert.Equal(t, "/users12", users12PercentileField.Labels["request.uri"])
+				assert.Equal(t, 1, users12PercentileField.Len()) // 1 percentile value
+				assert.Equal(t, 98.50, *users12PercentileField.At(0).(*float64))
+			},
+		},
 	}
 
 	for _, tt := range tests {
