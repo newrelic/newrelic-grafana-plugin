@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    branches:
+        - NR-427782
+#   workflow_dispatch:
+#     inputs:
+#       version:
+#         description: 'Release version'
+#         required: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Run Frontend Tests
+        run: npm run test  
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Install Go Dependencies
+        run: go mod download
+
+      - name: Test backend
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: coverage
+
+      - name: Build backend
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: buildAll
+
+      - name: Get plugin metadata
+        id: metadata
+        run: |
+          sudo apt-get install jq
+
+          export GRAFANA_PLUGIN_ID=$(cat dist/plugin.json | jq -r .id)
+          export GRAFANA_PLUGIN_VERSION=$(cat dist/plugin.json | jq -r .info.version)
+          export GRAFANA_PLUGIN_ARTIFACT=${GRAFANA_PLUGIN_ID}-${GRAFANA_PLUGIN_VERSION}.zip
+
+          echo "plugin-id=${GRAFANA_PLUGIN_ID}" >> $GITHUB_OUTPUT
+          echo "plugin-version=${GRAFANA_PLUGIN_VERSION}" >> $GITHUB_OUTPUT
+          echo "archive=${GRAFANA_PLUGIN_ARTIFACT}" >> $GITHUB_OUTPUT
+
+      - name: Package plugin
+        id: package-plugin
+        env:
+          PLUGIN_ID: ${{ steps.metadata.outputs.plugin-id }}
+          PLUGIN_ARCHIVE: ${{ steps.metadata.outputs.archive }}
+        run: |
+          mv dist ${PLUGIN_ID}
+          zip ${PLUGIN_ARCHIVE} ${PLUGIN_ID} -r
+
+      - name: Archive Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.metadata.outputs.plugin-id }}-${{ steps.metadata.outputs.plugin-version }}
+          path: ${{ steps.metadata.outputs.archive }}
+          retention-days: 5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload zip to S3
+        run: |
+          # Get the archive name and plugin version directly from the metadata step's outputs
+          PLUGIN_ARCHIVE_NAME="${{ steps.metadata.outputs.archive }}"
+          GRAFANA_PLUGIN_VERSION="${{ steps.metadata.outputs.plugin-version }}"
+
+          # The archive is created in the root of the workspace by the "Package plugin" step
+          # So the source path is simply the archive name.
+          # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
+          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://:nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
