@@ -26,8 +26,8 @@ jobs:
       - name: Install Frontend Dependencies
         run: npm ci
 
-    #   - name: Run Frontend Tests
-    #     run: npm run test  
+      - name: Run Frontend Tests
+        run: npm run test:ci  
 
       - name: Build Frontend
         run: npm run build
@@ -37,27 +37,21 @@ jobs:
         with:
           go-version-file: go.mod
 
-    #   - name: Test backend
-    #     uses: magefile/mage-action@v3
-    #     with:
-    #       version: latest
-    #       args: coverage
+      - name: Install Mage
+        uses: magefile/mage-action@v3
+        with:
+          install-only: true
 
       - name: Build backend
-        uses: magefile/mage-action@6f50bbb8ea47d56e62dee92392788acbc8192d0b
-        with:
-          version: latest
-          args: buildAll
+        run: mage -v
 
       - name: Get plugin metadata
         id: metadata
         run: |
           sudo apt-get install jq
-
           export GRAFANA_PLUGIN_ID=$(cat dist/plugin.json | jq -r .id)
           export GRAFANA_PLUGIN_VERSION=$(cat dist/plugin.json | jq -r .info.version)
           export GRAFANA_PLUGIN_ARTIFACT=${GRAFANA_PLUGIN_ID}-${GRAFANA_PLUGIN_VERSION}.zip
-
           echo "plugin-id=${GRAFANA_PLUGIN_ID}" >> $GITHUB_OUTPUT
           echo "plugin-version=${GRAFANA_PLUGIN_VERSION}" >> $GITHUB_OUTPUT
           echo "archive=${GRAFANA_PLUGIN_ARTIFACT}" >> $GITHUB_OUTPUT
@@ -94,4 +88,4 @@ jobs:
           # The archive is created in the root of the workspace by the "Package plugin" step
           # So the source path is simply the archive name.
           # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
-          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
+          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "arn:aws:s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
