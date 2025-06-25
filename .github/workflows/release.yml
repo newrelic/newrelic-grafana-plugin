@@ -10,6 +10,9 @@ on:
 #         description: 'Release version'
 #         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -92,4 +95,4 @@ jobs:
           # The archive is created in the root of the workspace by the "Package plugin" step
           # So the source path is simply the archive name.
           # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
-          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
+          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME"
