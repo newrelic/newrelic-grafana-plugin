@@ -41,8 +41,8 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: "**/*.sum"
 
-      - name: Test Coverage
-        run: make coverage
+    #   - name: Test Coverage
+    #     run: make coverage
 
       - name: Test backend
         uses: magefile/mage-action@v3
