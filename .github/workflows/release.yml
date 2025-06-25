@@ -37,13 +37,17 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install Mage
+      - name: Test backend
         uses: magefile/mage-action@v3
         with:
-          install-only: true
+          version: latest
+          args: coverage
 
       - name: Build backend
-        run: mage -v
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: buildAll
 
       - name: Get plugin metadata
         id: metadata
@@ -88,4 +92,4 @@ jobs:
           # The archive is created in the root of the workspace by the "Package plugin" step
           # So the source path is simply the archive name.
           # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
-          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "arn:aws:s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
+          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME" --acl public-read
