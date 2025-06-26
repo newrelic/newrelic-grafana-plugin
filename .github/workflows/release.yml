@@ -14,10 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js environment
@@ -35,7 +35,7 @@ jobs:
       - name: Build Frontend
         run: npm run build
 
-      - name: Setup Go environment
+      - name: Setup Go Environment
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -44,20 +44,19 @@ jobs:
     #   - name: Test Coverage
     #     run: make coverage
 
-      - name: Test backend
+      - name: Test Backend
         uses: magefile/mage-action@v3
         with:
           version: latest
           args: coverage
 
-      - name: Build backend
+      - name: Build Backend
         uses: magefile/mage-action@v3
         with:
           version: latest
           args: buildAll
-          cache-binarys: true
 
-      - name: Get plugin metadata
+      - name: Get Plugin Metadata
         id: metadata
         run: |
           sudo apt-get install jq
@@ -68,7 +67,7 @@ jobs:
           echo "plugin-version=${GRAFANA_PLUGIN_VERSION}" >> $GITHUB_OUTPUT
           echo "archive=${GRAFANA_PLUGIN_ARTIFACT}" >> $GITHUB_OUTPUT
 
-      - name: Package plugin
+      - name: Package Plugin
         id: package-plugin
         env:
           PLUGIN_ID: ${{ steps.metadata.outputs.plugin-id }}
@@ -84,20 +83,20 @@ jobs:
           path: ${{ steps.metadata.outputs.archive }}
           retention-days: 5
 
-    #   - name: Configure AWS credentials
-    #     uses: aws-actions/configure-aws-credentials@v4
-    #     with:
-    #       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    #       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    #       aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    #   - name: Upload zip to S3
-    #     run: |
-    #       # Get the archive name and plugin version directly from the metadata step's outputs
-    #       PLUGIN_ARCHIVE_NAME="${{ steps.metadata.outputs.archive }}"
-    #       GRAFANA_PLUGIN_VERSION="${{ steps.metadata.outputs.plugin-version }}"
+      - name: Upload zip to S3
+        run: |
+          # Get the archive name and plugin version directly from the metadata step's outputs
+          PLUGIN_ARCHIVE_NAME="${{ steps.metadata.outputs.archive }}"
+          GRAFANA_PLUGIN_VERSION="${{ steps.metadata.outputs.plugin-version }}"
 
-    #       # The archive is created in the root of the workspace by the "Package plugin" step
-    #       # So the source path is simply the archive name.
-    #       # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
-    #       aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME"
+          # The archive is created in the root of the workspace by the "Package plugin" step
+          # So the source path is simply the archive name.
+          # The destination path uses the plugin ID from metadata and the plugin version for the folder structure.
+          aws s3 cp "$PLUGIN_ARCHIVE_NAME" "s3://nr-downloads-ohai-testing/newrelic-grafana-plugin/${{ steps.metadata.outputs.plugin-id }}/$GRAFANA_PLUGIN_VERSION/$PLUGIN_ARCHIVE_NAME"
