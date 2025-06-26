@@ -31,6 +31,9 @@ jobs:
       - name: Run Frontend Tests
         run: npm run test:ci
 
+      - name: Build Frontend
+        run: npm run build  
+
       - name: Setup Go Environment
         uses: actions/setup-go@v5
         with:
@@ -42,9 +45,6 @@ jobs:
             go test -v ./...
             go test -coverprofile=coverage.out -covermode=atomic ./...
             go tool cover -func=coverage.out
-
-      - name: Build Frontend
-        run: npm run build
 
       - name: Build Backend
         run: |
