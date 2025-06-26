@@ -2,13 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-        - NR-427782
-#   workflow_dispatch:
-#     inputs:
-#       version:
-#         description: 'Release version'
-#         required: true
+    tags:
+        - 'v*'    
 
 permissions:
   contents: read
@@ -39,7 +34,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: "**/*.sum"
+          cache-dependency-path: "go.sum"
 
       - name: Test Backend
         uses: magefile/mage-action@v3

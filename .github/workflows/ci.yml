@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - NR-427782
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Run Frontend Tests
+        run: npm run test:ci
+
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "go.sum" 
+
+      - name: Test Backend
+        run: |
+            go test -v ./...
+            go test -coverprofile=coverage.out -covermode=atomic ./...
+            go tool cover -func=coverage.out
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: Build Backend
+        run: |
+            # Create dist directory if it doesn't exist
+            mkdir -p dist
+            
+            # Build for Linux (amd64)
+            echo "Building for Linux (amd64)..."
+            GOOS=linux GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_linux_amd64 ./pkg
+            
+            # Build for Linux (arm64)
+            echo "Building for Linux (arm64)..."
+            GOOS=linux GOARCH=arm64 go build -o dist/gpx_newrelic_grafana_plugin_linux_arm64 ./pkg
+            
+            # Build for Linux (arm)
+            echo "Building for Linux (arm)..."
+            GOOS=linux GOARCH=arm go build -o dist/gpx_newrelic_grafana_plugin_linux_arm ./pkg
+            
+            # Build for macOS (amd64)
+            echo "Building for macOS (amd64)..."
+            GOOS=darwin GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_darwin_amd64 ./pkg
+            
+            # Build for macOS (arm64)
+            echo "Building for macOS (arm64)..."
+            GOOS=darwin GOARCH=arm64 go build -o dist/gpx_newrelic_grafana_plugin_darwin_arm64 ./pkg
+            
+            # Build for Windows (amd64)
+            echo "Building for Windows (amd64)..."
+            GOOS=windows GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_windows_amd64.exe ./pkg
+            
+            # Build manifest file
+            echo "Building manifest..."
+            go build -o dist/go_plugin_build_manifest ./pkg
+            
+            # List the built files
+            echo "Built files:"
+            ls -la dist/
