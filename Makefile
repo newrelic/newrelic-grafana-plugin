@@ -9,8 +9,17 @@ all: test
 test:
 	go test ./... -v
 
-# Run tests with coverage and display report
+# Run tests with coverage
 coverage:
+	@echo "Running tests with coverage..."
+	@go test ./... -v -coverprofile=coverage.out
+	@echo "\nFunction coverage summary:"
+	@go tool cover -func=coverage.out
+	@echo "\nGenerating coverage report..."
+	@go tool cover -html=coverage.out -o coverage.html
+
+# Run tests with coverage and display report
+coverage-html-report:
 	@echo "Running tests with coverage..."
 	@go test ./... -v -coverprofile=coverage.out
 	@echo "\nFunction coverage summary:"
