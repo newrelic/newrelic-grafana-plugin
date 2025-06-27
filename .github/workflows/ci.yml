@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - NR-427782
   pull_request:
     branches:
       - master
@@ -41,9 +42,7 @@ jobs:
 
       - name: Test Backend
         run: |
-            go test -v ./...
-            go test -coverprofile=coverage.out -covermode=atomic ./...
-            go tool cover -func=coverage.out
+            make coverage
 
       - name: Build Backend
         run: |
