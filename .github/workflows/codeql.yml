@@ -12,7 +12,7 @@ on:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: code-scanning
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
       packages: read
@@ -32,7 +32,7 @@ jobs:
       if: ${{ matrix.language == 'go' }}
       uses: actions/setup-go@v4
       with:
-        go-version: '1.21' 
+        go-version: '1.24'
 
     - name: Setup Node.js
       if: ${{ matrix.language == 'javascript' }}
