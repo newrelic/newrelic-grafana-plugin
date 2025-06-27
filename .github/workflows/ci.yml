@@ -41,37 +41,24 @@ jobs:
           cache-dependency-path: "go.sum" 
 
       - name: Test Backend
-        run: |
-            make coverage
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: coverage
 
       - name: Build Backend
         run: |
             # Create dist directory if it doesn't exist
             mkdir -p dist
             
-            # Build for Linux (amd64)
-            echo "Building for Linux (amd64)..."
-            GOOS=linux GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_linux_amd64 ./pkg
+            # Get current OS and architecture
+            OS=$(go env GOOS)
+            ARCH=$(go env GOARCH)
             
-            # Build for Linux (arm64)
-            echo "Building for Linux (arm64)..."
-            GOOS=linux GOARCH=arm64 go build -o dist/gpx_newrelic_grafana_plugin_linux_arm64 ./pkg
+            echo "Building for current system: $OS-$ARCH..."
             
-            # Build for Linux (arm)
-            echo "Building for Linux (arm)..."
-            GOOS=linux GOARCH=arm go build -o dist/gpx_newrelic_grafana_plugin_linux_arm ./pkg
-            
-            # Build for macOS (amd64)
-            echo "Building for macOS (amd64)..."
-            GOOS=darwin GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_darwin_amd64 ./pkg
-            
-            # Build for macOS (arm64)
-            echo "Building for macOS (arm64)..."
-            GOOS=darwin GOARCH=arm64 go build -o dist/gpx_newrelic_grafana_plugin_darwin_arm64 ./pkg
-            
-            # Build for Windows (amd64)
-            echo "Building for Windows (amd64)..."
-            GOOS=windows GOARCH=amd64 go build -o dist/gpx_newrelic_grafana_plugin_windows_amd64.exe ./pkg
+            # Build for current OS and architecture
+            go build -o dist/gpx_newrelic_grafana_plugin_${OS}_${ARCH} ./pkg
             
             # Build manifest file
             echo "Building manifest..."
