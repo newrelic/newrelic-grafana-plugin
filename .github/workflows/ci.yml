@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Run Frontend Tests
+        run: npm run test:ci
+
+      - name: Build Frontend
+        run: npm run build  
+
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "go.sum" 
+
+      - name: Test Backend
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: coverage
+          
+      - name: Backend Coverage
+        run: |
+          echo -e "\nCoverage Summary:"
+          grep "total:" coverage/backend.txt
+
+      - name: Build Backend
+        uses: magefile/mage-action@v3
+        with:
+          version: latest
+          args: buildAll
