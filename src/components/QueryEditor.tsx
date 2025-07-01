@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { Button, Switch, ButtonGroup, Icon, TextArea, Tooltip } from '@grafana/ui';
+import { Button, Switch, ButtonGroup, Icon, Tooltip } from '@grafana/ui';
 import { DataSource } from '../datasource';
-import { NewRelicQuery, NewRelicDataSourceOptions, ValidationResult } from '../types';
+import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
 import { validateNrqlQuery } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VARIABLES } from '../utils/timeUtils';
+import * as monaco from 'monaco-editor';
+import { loader } from '@monaco-editor/react';
 
+loader.config({ monaco });
+import { Editor } from '@monaco-editor/react';
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
 /**
@@ -21,6 +25,23 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
   );
 
+  //On Editor Change Callback function
+  function handleEditorChange(queryString: any, event: any) {
+    handleNRQLChange(queryString);
+  }
+
+   //On Editor did mount life cycle hook function
+  function handleEditorDidMount(editor: any, monaco: any) {
+    
+  }
+ //On Editor will mount hook function
+  function handleEditorWillMount(monaco: any) {
+  }
+
+  //On Editor Validation Callback function
+  function handleEditorValidation(markers: any) {
+   
+  }
   // Local state for the raw NRQL text
   const [rawNRQL, setRawNRQL] = useState(query.queryText || '');
 
@@ -297,17 +318,21 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         </div>
       ) : (
         <div role="region" aria-label="NRQL Text Editor">
-          <TextArea
+
+          <Editor
+            height="10vh"
+            theme='vs-dark'
+            options={{ minimap: { enabled: false } }}
+            defaultLanguage="sql"
+            defaultValue="-- Write your SQL here"
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            beforeMount={handleEditorWillMount}
+            onValidate={handleEditorValidation}
             value={rawNRQL}
-            onChange={(e) => handleNRQLChange(e.currentTarget.value)}
-            placeholder={useGrafanaTime
-              ? "SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to"
-              : "SELECT count(*) FROM Transaction SINCE 1 hour ago"
-            }
-            rows={4}
-            invalid={!!validationError}
             data-testid="nrql-textarea"
           />
+         
 
           {/* Help Text */}
           <div id="nrql-help" style={{

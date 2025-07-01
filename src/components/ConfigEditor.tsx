@@ -190,6 +190,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         form.removeEventListener('submit', handleSubmit);
       };
     }
+    return;
   }, [validateAllFields]);
 
   // Also handle Save & test button clicks
@@ -209,6 +210,7 @@ export function ConfigEditor({ onOptionsChange, options }: Props) {
         saveButton.removeEventListener('click', handleClick);
       };
     }
+    return ;
   }, [validateAllFields]);
 
   return (
