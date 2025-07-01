@@ -89,17 +89,24 @@ func isFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer) bool {
 
 // Overloaded for NRDBResultContainerMultiResultCustomized
 func isFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) bool {
-	if len(results.Results) == 0 {
-		return false
-	}
-
-	// Check if this has facet data and timeseries data
-	hasFacet := results.Results[0][utils.FacetFieldName] != nil
+	// For faceted timeseries queries, the data is in OtherResult/TotalResult, not Results
+	// Check if this has facet metadata and timeseries data in OtherResult
+	hasFacet := len(results.Metadata.Facets) > 0
 	hasTimeseries := hasTimeseriesDataMulti(results)
+
+	log.DefaultLogger.Debug("Detection Logic Debug",
+		"facetsInMetadata", results.Metadata.Facets,
+		"hasFacet", hasFacet,
+		"hasTimeseries", hasTimeseries,
+		"resultsLength", len(results.Results),
+		"otherResultLength", len(results.OtherResult),
+		"totalResultLength", len(results.TotalResult))
 
 	// For faceted timeseries, we need both facets and timeseries data
 	// The aggregation field can be anything (count, sum.duration, average.duration, etc.)
-	return hasFacet && hasTimeseries
+	result := hasFacet && hasTimeseries
+	log.DefaultLogger.Debug("Final detection result", "isFacetedTimeseries", result)
+	return result
 }
 
 func hasTimeseriesData(results *nrdb.NRDBResultContainer) bool {
@@ -112,12 +119,31 @@ func hasTimeseriesData(results *nrdb.NRDBResultContainer) bool {
 }
 
 func hasTimeseriesDataMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) bool {
-	if len(results.Results) == 0 {
-		return false
+	// Check OtherResult first (this is where faceted timeseries data is stored)
+	if len(results.OtherResult) > 0 {
+		_, hasBeginTime := results.OtherResult[0]["beginTimeSeconds"]
+		_, hasEndTime := results.OtherResult[0]["endTimeSeconds"]
+		log.DefaultLogger.Debug("Checking OtherResult for timeseries",
+			"hasBeginTime", hasBeginTime,
+			"hasEndTime", hasEndTime,
+			"firstEntry", results.OtherResult[0])
+		if hasBeginTime || hasEndTime {
+			return true
+		}
 	}
-	_, hasBeginTime := results.Results[0]["beginTimeSeconds"]
-	_, hasEndTime := results.Results[0]["endTimeSeconds"]
-	return hasBeginTime || hasEndTime
+
+	// Fallback to Results if OtherResult is empty
+	if len(results.Results) > 0 {
+		_, hasBeginTime := results.Results[0]["beginTimeSeconds"]
+		_, hasEndTime := results.Results[0]["endTimeSeconds"]
+		log.DefaultLogger.Debug("Checking Results for timeseries (fallback)",
+			"hasBeginTime", hasBeginTime,
+			"hasEndTime", hasEndTime)
+		return hasBeginTime || hasEndTime
+	}
+
+	log.DefaultLogger.Debug("No timeseries data found in either OtherResult or Results")
+	return false
 }
 
 // formatSimpleCountQuery formats results from a simple count query
@@ -173,6 +199,14 @@ func extractCountValue(result map[string]interface{}) float64 {
 		count = countValue
 	}
 	return count
+}
+
+// Helper function for tests - multi version of extractCountValue
+func extractCountValueMulti(result nrdb.NRDBResult) float64 {
+	if countValue, ok := result[utils.CountFieldName].(float64); ok {
+		return countValue
+	}
+	return 0.0
 }
 
 // formatFacetedCountQuery formats results from a faceted count query
@@ -348,8 +382,14 @@ func createFacetTimeSeriesFrame(facetNames []string, counts []float64, facetFiel
 
 	// Add facet fields
 	for _, facetName := range facetNames {
+		// Create labels for this field
+		labels := make(map[string]string)
+		// If we have values for this facet, set the first one as a label
+		if len(facetFields[facetName]) > 0 {
+			labels[facetName] = facetFields[facetName][0]
+		}
 		timeSeriesFrame.Fields = append(timeSeriesFrame.Fields,
-			data.NewField(facetName, nil, facetFields[facetName]))
+			data.NewField(facetName, labels, facetFields[facetName]))
 	}
 
 	// Add count field
@@ -423,7 +463,9 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 
 	// Create separate frames for each facet value
 	for facetValue, facetResults := range facetData {
-		frame := data.NewFrame("")
+		// Use facet value directly in the frame name
+		log.DefaultLogger.Debug("Creating frame with facet value: %s", facetValue)
+		frame := data.NewFrame(facetValue)
 		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
 		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
 
@@ -797,8 +839,17 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 	facetData := groupTimeseriesByFacetMulti(results, facetNames[0])
 	log.DefaultLogger.Debug("Faceted timeseries - Grouped into %d facet groups", len(facetData))
 
+	// Debug facet data
+	keys := make([]string, 0, len(facetData))
+	for k := range facetData {
+		keys = append(keys, k)
+	}
+	log.DefaultLogger.Debug("Facet data keys: %v", keys)
+
 	for facetValue, facetResults := range facetData {
-		frame := data.NewFrame("")
+		// Use just the facet value as the frame name to match test expectations
+		log.DefaultLogger.Debug("Creating frame with name: %s", facetValue)
+		frame := data.NewFrame(facetValue)
 		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
 		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
 
@@ -818,6 +869,11 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 	}
 
 	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response: %d", len(resp.Frames))
+
+	// Log frame names for debugging
+	for i, frame := range resp.Frames {
+		log.DefaultLogger.Debug("Frame %d name: %s", i, frame.Name)
+	}
 
 	return resp
 }
@@ -845,14 +901,26 @@ func groupTimeseriesByFacet(results *nrdb.NRDBResultContainer, facetName string)
 // Multi version for NRDBResultContainerMultiResultCustomized
 func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, facetName string) map[string][]nrdb.NRDBResult {
 	grouped := make(map[string][]nrdb.NRDBResult)
-	for _, result := range results.Results {
+
+	// Process data from OtherResult first, as it's the preferred location for faceted timeseries
+	resultsToProcess := results.OtherResult
+	if len(resultsToProcess) == 0 {
+		// Fallback to Results if OtherResult is empty
+		resultsToProcess = results.Results
+	}
+
+	for _, result := range resultsToProcess {
 		facetValue := ""
 		if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok && len(facetArray) > 0 {
+			// Clean up the format for array facets, extracting just the first value
 			facetValue = fmt.Sprintf("%v", facetArray[0])
+			log.DefaultLogger.Debug("Found facet array, extracted value: %v", facetValue)
 		} else if result[utils.FacetFieldName] != nil {
 			facetValue = fmt.Sprintf("%v", result[utils.FacetFieldName])
+			log.DefaultLogger.Debug("Found direct facet value: %v", facetValue)
 		}
 		if facetValue != "" {
+			log.DefaultLogger.Debug("Using facet value '%s' for grouping", facetValue)
 			grouped[facetValue] = append(grouped[facetValue], result)
 		}
 	}
@@ -872,18 +940,43 @@ func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResult
 		return resp
 	}
 
+	// For faceted timeseries queries, the data can be in either OtherResult or Results
 	// Convert to standard format and use the enhanced faceted aggregation formatter
+	var actualResults []nrdb.NRDBResult
+
+	// First check Results as it's the preferred location for faceted timeseries
+	if len(results.Results) > 0 {
+		actualResults = results.Results
+		log.DefaultLogger.Debug("Using Results with %d entries", len(actualResults))
+		// Debug facet values
+		for i, result := range actualResults {
+			if facetVal, ok := result["facet"]; ok {
+				log.DefaultLogger.Debug("Results[%d] facet: %v", i, facetVal)
+			}
+		}
+	} else {
+		// Fallback to OtherResult if Results is empty
+		actualResults = results.OtherResult
+		log.DefaultLogger.Debug("Using OtherResult with %d entries", len(actualResults))
+		// Debug facet values
+		for i, result := range actualResults {
+			if facetVal, ok := result["facet"]; ok {
+				log.DefaultLogger.Debug("OtherResult[%d] facet: %v", i, facetVal)
+			}
+		}
+	}
+
 	standardResults := &nrdb.NRDBResultContainer{
-		Results:  make([]nrdb.NRDBResult, len(results.Results)),
+		Results:  make([]nrdb.NRDBResult, len(actualResults)),
 		Metadata: results.Metadata,
 	}
 
-	// Copy results
-	for i, result := range results.Results {
+	// Copy the actual results data
+	for i, result := range actualResults {
 		standardResults.Results[i] = result
 	}
 
-	// Get facet names
+	// Get facet names from metadata (not from result data)
 	facetNames := extractFacetNames(standardResults)
 	if len(facetNames) == 0 {
 		// No facets found, fall back to standard query
@@ -1223,4 +1316,18 @@ func handlePercentileFieldMulti(frame *data.Frame, results *nrdb.NRDBResultConta
 
 		frame.Fields = append(frame.Fields, data.NewField(fieldNameWithPercentile, nil, values))
 	}
+}
+
+// getMapKeys returns the keys of a map as a slice for debugging
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// HandlePercentileFieldMulti is an exported version of handlePercentileFieldMulti for testing
+func HandlePercentileFieldMulti(frame *data.Frame, results *nrdb.NRDBResultContainerMultiResultCustomized, fieldName string) {
+	handlePercentileFieldMulti(frame, results, fieldName)
 }

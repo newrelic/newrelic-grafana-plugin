@@ -30,8 +30,8 @@ func (m *MockNewRelicClientFactory) CreateClient(opts ...newrelic.ConfigOption) 
 // TestNewClient tests the direct client creation functionality
 func TestNewClient(t *testing.T) {
 	// Save the original newrelic.New function to restore after tests
-	originalNewFunc := newrelicNewFunc
-	defer func() { newrelicNewFunc = originalNewFunc }()
+	originalNewFunc := NewrelicNewFunc
+	defer func() { NewrelicNewFunc = originalNewFunc }()
 
 	tests := []struct {
 		name    string
@@ -82,7 +82,7 @@ func TestNewClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Override newrelic.New for this test case if mockFn is provided
 			if tt.mockFn != nil {
-				newrelicNewFunc = tt.mockFn
+				NewrelicNewFunc = tt.mockFn
 			}
 
 			client, err := NewClient(tt.config)

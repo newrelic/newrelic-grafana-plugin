@@ -23,7 +23,7 @@ type DefaultNewRelicClientFactory struct{}
 // DefaultNewRelicClientFactory. It directly calls the New Relic Go client's
 // constructor to instantiate a new client with the given options.
 func (f *DefaultNewRelicClientFactory) CreateClient(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
-	// The newrelic.New function is the standard way to create a New Relic client.
-	// This method simply wraps that call, fulfilling the interface contract.
-	return newrelic.New(opts...)
+	// Use the newrelicNewFunc variable to create a New Relic client.
+	// This allows for easier testing by mocking the newrelicNewFunc.
+	return newrelicNewFunc(opts...)
 }

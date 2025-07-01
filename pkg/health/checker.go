@@ -16,6 +16,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
+// checkHealthFunction allows for mocking the validator.CheckHealth function in tests
+var checkHealthFunction = validator.CheckHealth
+
 // ExecuteHealthCheck performs a comprehensive health check for the New Relic datasource.
 // It encapsulates the full logic for validating plugin settings, initializing the
 // New Relic client, and performing a test API call to New Relic.
@@ -64,7 +67,7 @@ func PerformHealthCheck1(ctx context.Context, dsSettings backend.DataSourceInsta
 	// Step 4: Delegate the actual New Relic API connectivity check to the 'validator' package.
 	// This is where a real API call (e.g., a simple NRQL query) is performed to confirm
 	// that New Relic is reachable and the credentials are valid.
-	healthResult, checkErr := validator.CheckHealth(ctx, config, executor)
+	healthResult, checkErr := checkHealthFunction(ctx, config, executor)
 	if checkErr != nil {
 		// This condition catches any unexpected Go errors returned by the validator.
 		// Ideally, validator.CheckHealth should always return a *backend.CheckHealthResult
