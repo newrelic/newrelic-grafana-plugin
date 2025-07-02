@@ -13,6 +13,10 @@ var (
 	// newrelicNewFunc is a variable that holds the function to create a New Relic client
 	// This allows for mocking in tests
 	newrelicNewFunc = newrelic.New
+
+	// NewrelicNewFunc is an exported version of newrelicNewFunc for testing purposes
+	// This allows other packages to mock the New Relic client creation for tests
+	NewrelicNewFunc = newrelicNewFunc
 )
 
 // ClientConfig holds configuration options for the New Relic client
@@ -72,7 +76,7 @@ func NewClient(config ClientConfig) (*newrelic.NewRelic, error) {
 	}
 
 	// Create the client directly using the variable function to allow for testing
-	nrClient, err := newrelicNewFunc(cfgOpts...)
+	nrClient, err := NewrelicNewFunc(cfgOpts...)
 	// print nrClient to debug
 	if nrClient != nil {
 		log.DefaultLogger.Debug("NewRelicClient: New Relic client initialized successfully", "client", nrClient)

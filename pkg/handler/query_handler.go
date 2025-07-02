@@ -147,13 +147,21 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return resp
 	}
 
+	// DEBUG: Log the actual response structure to understand the issue
+	if resultsJSON, err := json.MarshalIndent(results, "", "  "); err == nil {
+		log.DefaultLogger.Debug("Raw API response", "refId", query.RefID, "type", fmt.Sprintf("%T", results), "response", string(resultsJSON))
+	}
+
 	switch r := results.(type) {
 	case *nrdb.NRDBResultContainer:
+		log.DefaultLogger.Debug("Using standard formatter", "refId", query.RefID)
 		return formatter.FormatQueryResults(r, query)
 	case *nrdb.NRDBResultContainerMultiResultCustomized:
+		log.DefaultLogger.Debug("Using faceted timeseries formatter", "refId", query.RefID)
 		return formatter.FormatFacetedTimeseriesResults(r, query)
 	default:
 		resp.Error = fmt.Errorf("unexpected result type from NRQL query execution")
+		log.DefaultLogger.Error("Unexpected result type", "refId", query.RefID, "type", fmt.Sprintf("%T", results))
 		return resp
 	}
 }
