@@ -8,7 +8,7 @@ import {
   convertGrafanaTimeToNRQL,
   GRAFANA_TIME_VARIABLES 
 } from './timeUtils';
-import { TimeRange, dateTime } from '@grafana/data';
+
 
 describe('timeUtils', () => {
   describe('hasGrafanaTimeVariables', () => {
