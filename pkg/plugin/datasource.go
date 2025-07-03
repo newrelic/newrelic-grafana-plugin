@@ -65,6 +65,9 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	logger := log.DefaultLogger.FromContext(ctx)
 	response := backend.NewQueryDataResponse()
 
+	// Get datasource UID for service naming
+	datasourceUID := req.PluginContext.DataSourceInstanceSettings.UID
+
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 	if err != nil {
 		logger.Error("Failed to load plugin settings", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
@@ -79,6 +82,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	// Create a client config
 	clientConfig := client.DefaultConfig()
 	clientConfig.APIKey = config.Secrets.ApiKey
+	clientConfig.DatasourceUID = datasourceUID // Set the datasource UID for unique service name
 
 	// Create New Relic client using the new method
 	nrClient, err := client.NewClient(clientConfig)

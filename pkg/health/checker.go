@@ -51,6 +51,8 @@ func PerformHealthCheck1(ctx context.Context, dsSettings backend.DataSourceInsta
 	// This verifies that the API key is present and allows for basic client initialization.
 	clientConfig := client.DefaultConfig()
 	clientConfig.APIKey = config.Secrets.ApiKey
+	clientConfig.DatasourceUID = dsSettings.UID // Set the datasource UID for unique service name
+	log.DefaultLogger.Debug("health.ExecuteHealthCheck: Creating client with UID", "uid", dsSettings.UID)
 	nrClient, err := client.NewClient(clientConfig)
 	if err != nil {
 		log.DefaultLogger.Error("health.ExecuteHealthCheck: Failed to create New Relic client", "error", err)

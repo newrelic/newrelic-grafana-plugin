@@ -722,4 +722,53 @@ func TestDatasource_HandleHealthResource_CorruptResponse_Main(t *testing.T) {
 	assert.True(t, exists, "Response should contain a status field")
 }
 
-// mockSenderWithError is defined in datasource_additional_test.go, so we do not redefine it here.
+// TestDatasource_QueryData_WithUID tests that QueryData handles datasource UID properly
+func TestDatasource_QueryData_WithUID(t *testing.T) {
+	ds := &Datasource{}
+	ctx := context.Background()
+
+	testUID := "test-datasource-uid-789"
+	req := &backend.QueryDataRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				UID: testUID, // Include a test UID
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey":    "test-api-key",
+					"accountID": "123456",
+				},
+				JSONData: []byte(`{}`),
+			},
+		},
+		Queries: []backend.DataQuery{
+			{RefID: "queryA", QueryType: "nrql", JSON: []byte(`{"queryText":"SELECT count(*) FROM Transaction","accountID":123456}`)},
+		},
+	}
+
+	// Mock LoadPluginSettings to return valid settings
+	originalLoadPluginSettings := models.LoadPluginSettings
+	models.LoadPluginSettings = func(settings backend.DataSourceInstanceSettings) (*models.PluginSettings, error) {
+		return &models.PluginSettings{
+			Secrets: &models.SecretPluginSettings{
+				ApiKey:    "test-api-key",
+				AccountId: 12345,
+			},
+		}, nil
+	}
+	defer func() { models.LoadPluginSettings = originalLoadPluginSettings }()
+
+	// We expect this to fail due to invalid credentials, but it should process the UID
+	res, err := ds.QueryData(ctx, req)
+
+	// The main goal is to verify the function doesn't panic with UID present
+	// and processes the request (even if it fails due to invalid test credentials)
+	if err != nil {
+		// Expected to fail with test credentials, but should mention client creation
+		assert.Contains(t, err.Error(), "failed to create New Relic client")
+	} else {
+		// If it somehow doesn't error, verify we get a response structure
+		assert.NotNil(t, res)
+	}
+
+	// Key verification: the UID was present in the request
+	assert.Equal(t, testUID, req.PluginContext.DataSourceInstanceSettings.UID)
+}

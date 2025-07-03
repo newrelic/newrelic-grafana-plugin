@@ -21,12 +21,13 @@ var (
 
 // ClientConfig holds configuration options for the New Relic client
 type ClientConfig struct {
-	APIKey     string
-	Region     string
-	Timeout    time.Duration
-	RetryCount int
-	RetryDelay time.Duration
-	UserAgent  string
+	APIKey        string
+	Region        string
+	Timeout       time.Duration
+	RetryCount    int
+	RetryDelay    time.Duration
+	UserAgent     string
+	DatasourceUID string // New field for datasource UID
 }
 
 // DefaultConfig returns a ClientConfig with sensible defaults
@@ -67,12 +68,21 @@ func NewClient(config ClientConfig) (*newrelic.NewRelic, error) {
 		return nil, &NewRelicClientError{Msg: "New Relic API key cannot be empty"}
 	}
 
+	// Create service name with UID if provided
+	clientServiceName := serviceName
+	if config.DatasourceUID != "" {
+		clientServiceName = fmt.Sprintf("%s-%s", serviceName, config.DatasourceUID)
+		log.DefaultLogger.Debug("NewRelicClient: Using UID-specific service name", "serviceName", clientServiceName, "uid", config.DatasourceUID)
+	} else {
+		log.DefaultLogger.Debug("NewRelicClient: Using default service name", "serviceName", clientServiceName)
+	}
+
 	// Setup configuration options
 	cfgOpts := []newrelic.ConfigOption{
 		newrelic.ConfigPersonalAPIKey(config.APIKey),
 		newrelic.ConfigRegion(config.Region),
 		newrelic.ConfigUserAgent(config.UserAgent),
-		newrelic.ConfigServiceName(serviceName),
+		newrelic.ConfigServiceName(clientServiceName),
 	}
 
 	// Create the client directly using the variable function to allow for testing
@@ -116,11 +126,20 @@ func GetClient(config ClientConfig, factory NewRelicClientFactory) (*newrelic.Ne
 		return nil, &NewRelicClientError{Msg: "New Relic API key cannot be empty"}
 	}
 
+	// Create service name with UID if provided
+	clientServiceName := serviceName
+	if config.DatasourceUID != "" {
+		clientServiceName = fmt.Sprintf("%s-%s", serviceName, config.DatasourceUID)
+		log.DefaultLogger.Debug("GetClient: Using UID-specific service name", "serviceName", clientServiceName, "uid", config.DatasourceUID)
+	} else {
+		log.DefaultLogger.Debug("GetClient: Using default service name", "serviceName", clientServiceName)
+	}
+
 	opts := []newrelic.ConfigOption{
 		newrelic.ConfigPersonalAPIKey(config.APIKey),
 		newrelic.ConfigRegion(config.Region),
 		newrelic.ConfigUserAgent(config.UserAgent),
-		newrelic.ConfigServiceName(serviceName),
+		newrelic.ConfigServiceName(clientServiceName),
 	}
 
 	client, err := factory.CreateClient(opts...)
