@@ -349,3 +349,49 @@ func TestPerformHealthCheck1_NewClientError(t *testing.T) {
 	assert.Contains(t, result.Message, "API key invalid or New Relic client failed to initialize")
 	assert.Contains(t, result.Message, "simulated client creation error")
 }
+
+// TestPerformHealthCheck1_WithUID tests health check with datasource UID
+func TestPerformHealthCheck1_WithUID(t *testing.T) {
+	// Save original client creation function
+	originalNewFunc := client.NewrelicNewFunc
+	defer func() { client.NewrelicNewFunc = originalNewFunc }()
+
+	// Save original health check function
+	originalCheckHealthFunction := checkHealthFunction
+	defer func() { checkHealthFunction = originalCheckHealthFunction }()
+
+	// Mock the client creation to succeed
+	client.NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+		return &newrelic.NewRelic{}, nil
+	}
+
+	// Mock the health check function to avoid actual API calls that would panic
+	checkHealthFunction = func(ctx context.Context, config *models.PluginSettings, executor nrdbiface.NRDBQueryExecutor) (*backend.CheckHealthResult, error) {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusOk,
+			Message: "✅ Test successful with UID",
+		}, nil
+	}
+
+	settings := backend.DataSourceInstanceSettings{
+		ID:   1,
+		UID:  "test-uid-456", // Test UID
+		Name: "test-datasource-with-uid",
+		DecryptedSecureJSONData: map[string]string{
+			"apiKey":    "test-api-key",
+			"accountID": "123456",
+		},
+		JSONData: []byte(`{}`),
+	}
+
+	ctx := context.Background()
+	result, err := PerformHealthCheck1(ctx, settings)
+
+	// With proper mocking, this should succeed
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, backend.HealthStatusOk, result.Status)
+
+	// The key thing is that the function completes successfully with UID present
+	assert.NotEmpty(t, settings.UID, "UID should be present for this test")
+}

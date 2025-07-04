@@ -99,6 +99,53 @@ func TestNewClient(t *testing.T) {
 			}
 		})
 	}
+
+	// Test cases for UID-specific service names
+	t.Run("with datasource UID", func(t *testing.T) {
+		// Mock the newrelic.New function to capture configuration options
+		var capturedOpts []newrelic.ConfigOption
+		NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+			capturedOpts = opts
+			return &newrelic.NewRelic{}, nil
+		}
+
+		config := ClientConfig{
+			APIKey:        "valid-api-key",
+			Region:        "US",
+			Timeout:       30 * time.Second,
+			UserAgent:     "test-user-agent",
+			DatasourceUID: "test-uid-123",
+		}
+
+		client, err := NewClient(config)
+		assert.NoError(t, err)
+		assert.NotNil(t, client)
+
+		// Verify that configuration options were captured
+		assert.NotEmpty(t, capturedOpts)
+
+		// Note: We can't easily test the exact service name without more complex mocking
+		// but we can verify that the function completes successfully with a UID
+	})
+
+	t.Run("without datasource UID", func(t *testing.T) {
+		// Mock the newrelic.New function
+		NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+			return &newrelic.NewRelic{}, nil
+		}
+
+		config := ClientConfig{
+			APIKey:        "valid-api-key",
+			Region:        "US",
+			Timeout:       30 * time.Second,
+			UserAgent:     "test-user-agent",
+			DatasourceUID: "", // Empty UID
+		}
+
+		client, err := NewClient(config)
+		assert.NoError(t, err)
+		assert.NotNil(t, client)
+	})
 }
 
 // TestCreateNewRelicClient_Success tests the successful creation of a New Relic client.
