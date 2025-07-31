@@ -1,5 +1,23 @@
+
+// IMPORTANT: This single, comprehensive mock must be at the very top
+jest.mock('@monaco-editor/react', () => ({
+  __esModule: true,
+  loader: {
+    config: jest.fn(),
+  },
+  Editor: (props: any) => {
+    return (
+      <textarea
+        data-testid={props['data-testid'] || 'nrql-textarea'}
+        value={props.value}
+        onChange={e => props.onChange && props.onChange(e.target.value, e)}
+      />
+    );
+  },
+}));
+
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { QueryEditor } from '../QueryEditor';
 import { NewRelicQuery } from '../../types';
 import { dateTime } from '@grafana/data';
@@ -76,7 +94,7 @@ const createMockTimeRange = () => ({
   raw: { from: 'now-1h', to: 'now' }
 });
 
-const setup = (props = {}) => {
+const setup = async (props = {}) => {
   const onChange = jest.fn();
   const onRunQuery = jest.fn();
   const datasource = createMockDatasource();
@@ -90,7 +108,9 @@ const setup = (props = {}) => {
     ...props
   };
 
-  render(<QueryEditor {...defaultProps} />);
+  await act(async () => {
+    render(<QueryEditor {...defaultProps} />);
+  });
   return { onChange, onRunQuery, datasource };
 };
 
@@ -100,14 +120,14 @@ describe('QueryEditor', () => {
   });
 
   describe('Component Rendering', () => {
-    it('renders NRQL Editor and Query Builder toggle buttons', () => {
-      setup();
+    it('renders NRQL Editor and Query Builder toggle buttons', async () => {
+      await setup();
       expect(screen.getByText('NRQL Editor')).toBeInTheDocument();
       expect(screen.getByText('Query Builder')).toBeInTheDocument();
     });
 
-    it('renders with textarea by default (NRQL Editor mode)', () => {
-      setup();
+    it('renders with textarea by default (NRQL Editor mode)', async () => {
+      await setup();
     });
   });
 });

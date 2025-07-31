@@ -9,13 +9,13 @@ export function validateApiKey(apiKey: string): boolean {
   if (typeof apiKey === 'undefined' || apiKey === null) {
     return false;
   }
-  
+
   if (typeof apiKey !== 'string') {
     return false;
   }
 
   const trimmed = apiKey.trim();
-  
+
   // Basic validation - must start with NRAK- and have content after
   if (!trimmed.startsWith('NRAK-') || trimmed.length < 10) {
     return false;
@@ -24,7 +24,7 @@ export function validateApiKey(apiKey: string): boolean {
   // Allow alphanumeric characters after NRAK-
   const keyPart = trimmed.substring(5); // Remove NRAK- prefix
   const alphanumericRegex = /^[A-Za-z0-9]+$/;
-  
+
   return alphanumericRegex.test(keyPart);
 }
 
@@ -42,7 +42,7 @@ export function validateApiKeyDetailed(apiKey: string): ValidationResult {
   }
 
   const trimmed = apiKey.trim();
-  
+
   // New Relic API keys must start with "NRAK-" prefix
   if (!trimmed.startsWith('NRAK-')) {
     return {
@@ -62,7 +62,7 @@ export function validateApiKeyDetailed(apiKey: string): ValidationResult {
   // Validate the key part after "NRAK-" (should be alphanumeric)
   const keyPart = trimmed.substring(5); // Remove NRAK- prefix
   const alphanumericRegex = /^[A-Za-z0-9]+$/;
-  
+
   if (!alphanumericRegex.test(keyPart)) {
     return {
       isValid: false,
@@ -211,7 +211,7 @@ export function validateUrl(url: string): ValidationResult {
 
   try {
     const urlObj = new URL(url);
-    
+
     // Must be HTTPS for security
     if (urlObj.protocol !== 'https:') {
       return {
@@ -239,11 +239,21 @@ export function sanitizeInput(input: string): string {
     return '';
   }
 
-  return input
-    .replace(/[<>]/g, '') // Remove potential HTML tags
+
+  let sanitized = input.replace(/[<>]/g, '') // Remove potential HTML tags
     .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/\bon\w*\s*=\s*[^>\s]*/gi, '') // Remove event handlers like onclick=
-    .trim();
+    .replace(/data:/gi, '') // Remove data: protocol
+    .replace(/vbscript:/gi, ''); // Remove vbscript: protocol
+
+  // Remove all event handler attributes (e.g., onclick=, onerror=, etc.)
+  // Loop until no more event handler attributes are found
+  let previous;
+  do {
+    previous = sanitized;
+    sanitized = sanitized.replace(/\bon[a-zA-Z]+\s*=\s*(["'][^"']*["']|[^>\s]*)/gi, '');
+  } while (sanitized !== previous);
+
+  return sanitized.trim();
 }
 
 /**
