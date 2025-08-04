@@ -30,29 +30,29 @@ This project targets Grafana data source plugins and supports:
 
 ## Installation
 
+We recommend installing the plugin directly from the Grafana Catalog. For air-gapped or offline environments, a manual installation method is also available.
+
 ### Prerequisites
 
 - Grafana 10.4.0 or later
-- New Relic account with API access
-- New Relic User API Key
+- A New Relic account with a User API Key
 
-### Manual Installation
+### From the Grafana Catalog (Recommended)
+This is the simplest way to install for most users.
 
-1. Download the latest release from the [releases page](https://github.com/rahulkumartiwari/newrelic-grafana-plugin/releases)
-2. Extract the plugin to your Grafana plugins directory:
-   ```bash
-   # For Linux/macOS
-   sudo unzip newrelic-grafana-plugin-v0.0.1.zip -d /var/lib/grafana/plugins/
-   
-   # For Docker
-   unzip newrelic-grafana-plugin-v0.0.1.zip -d /var/lib/grafana/plugins/
+#### Using the Grafana UI:
+1. Navigate to Administration → Plugins and Data → Plugins in your Grafana instance.
+2. Search for "New Relic".
+3. Click on the plugin, then click the Install button.
+
+#### Using the Command Line:
+Run the following command on your Grafana server:
+```bash
+grafana-cli plugins install newrelic-grafana-datasource
    ```
-3. Restart Grafana
-4. Enable the plugin in Grafana configuration if using unsigned plugins:
-   ```ini
-   [plugins]
-   allow_loading_unsigned_plugins = newrelic-grafana-plugin
-   ```
+After installing via either method, you must restart the Grafana server for the plugin to be recognized.
+
+For detailed instructions on how to install the plugin on Grafana Cloud or locally, please checkout the [Plugin installation docs](https://grafana.com/docs/grafana/latest/administration/plugin-management/).
 
 ## Grafana Setup
 
@@ -289,6 +289,8 @@ To all contributors, we thank you! Without your contribution, this project would
 
 ## License
 
-The `newrelic-grafana-plugin` is licensed under the [Apache 2.0](http://apache.org/licenses/LICENSE-2.0.txt) License.
+This project is licensed under the terms of the GNU Affero General Public License v3.0 or New Relic Software License v. 1.0.
+
+Please see the [LICENSE](LICENSE) file for full details on both licenses.
 
 The `newrelic-grafana-plugin` may use source code from third-party libraries. When used, these libraries will be outlined in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
