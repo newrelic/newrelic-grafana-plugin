@@ -2,10 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "New Relic",
-  "id": "nrlabs-newrelic-datasource",
+  "id": "nrgrafanaplugin-newrelic-datasource",
   "metrics": true,
   "backend": true,
-  "executable": "gpx_nrlabs_newrelic_datasource",
+  "executable": "gpx_nrgrafanaplugin_newrelic_datasource",
   "info": {
     "description": "New Relic data source plugin for Grafana",
     "author": {
@@ -15,11 +15,11 @@
       "datasource",
       "new relic",
       "newrelic",
-      "nrlabs"
+      "nrgrafanaplugin"
     ],
     "logos": {
-      "small": "img/logo.svg",
-      "large": "img/logo.svg"
+      "small": "img/newrelic.png",
+      "large": "img/newrelic.png"
     },
     "links": [
       {
