@@ -49,7 +49,7 @@ This is the simplest way to install for most users.
 #### Using the Command Line:
 Run the following command on your Grafana server:
 ```bash
-grafana-cli plugins install nrlabs-newrelic-datasource
+grafana-cli plugins install nrgrafanaplugin-newrelic-datasource
 ```
 After installing via either method, you must restart the Grafana server for the plugin to be recognized.
 
