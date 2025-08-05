@@ -10,13 +10,13 @@
     "observability",
     "plugin"
   ],
-  "homepage": "https://github.com/rahulkumartiwari/newrelic-grafana-plugin",
+  "homepage": "https://github.com/newrelic/newrelic-grafana-plugin",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rahulkumartiwari/newrelic-grafana-plugin.git"
+    "url": "https://github.com/newrelic/newrelic-grafana-plugin.git"
   },
   "bugs": {
-    "url": "https://github.com/rahulkumartiwari/newrelic-grafana-plugin/issues"
+    "url": "https://github.com/newrelic/newrelic-grafana-plugin/issues"
   },
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
@@ -32,7 +32,7 @@
   },
   "author": {
     "name": "Rahul Kumar Tiwari",
-    "url": "https://github.com/rahulkumartiwari"
+    "url": "https://github.com/newrelic"
   },
   "license": "AGPL-3.0-only",
   "devDependencies": {
