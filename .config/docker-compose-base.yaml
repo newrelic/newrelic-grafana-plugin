@@ -19,13 +19,13 @@ services:
     cap_add:
       - SYS_PTRACE
     volumes:
-      - ../dist:/var/lib/grafana/plugins/newrelic-grafana-plugin
+      - ../dist:/var/lib/grafana/plugins/nrgrafanaplugin-newrelic-datasource
       - ../provisioning:/etc/grafana/provisioning
       - ..:/root/newrelic-grafana-plugin
 
     environment:
       NODE_ENV: development
-      GF_LOG_FILTERS: plugin.newrelic-grafana-plugin:debug
+      GF_LOG_FILTERS: plugin.nrgrafanaplugin-newrelic-datasource:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: newrelic-grafana-plugin
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: nrgrafanaplugin-newrelic-datasource

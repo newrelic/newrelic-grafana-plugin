@@ -34,7 +34,7 @@ describe('ConfigEditor', () => {
       id: 1,
       uid: 'test-uid',
       name: 'Test New Relic',
-      type: 'newrelic-grafana-plugin',
+      type: 'nrgrafanaplugin-newrelic-datasource',
       typeName: 'New Relic',
       access: 'proxy',
       url: '',
