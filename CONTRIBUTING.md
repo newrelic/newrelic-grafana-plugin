@@ -31,7 +31,7 @@ Before submitting an Issue, please search for similar ones in the
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/rahulkumartiwari/newrelic-grafana-plugin.git
+   git clone https://github.com/newrelic/newrelic-grafana-plugin.git
    cd newrelic-grafana-plugin
    ```
 
