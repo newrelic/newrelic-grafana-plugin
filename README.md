@@ -45,14 +45,15 @@ This is the simplest way to install for most users.
 2. Search for "New Relic".
 3. Click on the plugin, then click the Install button.
 
+
 #### Using the Command Line:
 Run the following command on your Grafana server:
 ```bash
-grafana-cli plugins install newrelic-grafana-datasource
-   ```
+grafana-cli plugins install nrlabs-newrelic-datasource
+```
 After installing via either method, you must restart the Grafana server for the plugin to be recognized.
 
-For detailed instructions on how to install the plugin on Grafana Cloud or locally, please checkout the [Plugin installation docs](https://grafana.com/docs/grafana/latest/administration/plugin-management/).
+For detailed instructions on how to install the plugin on Grafana Cloud or locally, please check out the [Plugin installation docs](https://grafana.com/docs/grafana/latest/administration/plugin-management/).
 
 ## Grafana Setup
 
