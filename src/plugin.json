@@ -2,21 +2,35 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "New Relic",
-  "id": "newrelic-grafana-datasource",
+  "id": "nrlabs-newrelic-datasource",
   "metrics": true,
   "backend": true,
-  "executable": "gpx_newrelic_grafana_plugin",
+  "executable": "gpx_nrlabs_newrelic_datasource",
   "info": {
     "description": "New Relic data source plugin for Grafana",
     "author": {
-      "name": "Org"
+      "name": "New Relic"
     },
-    "keywords": ["datasource", "newrelic"],
+    "keywords": [
+      "datasource",
+      "new relic",
+      "newrelic",
+      "nrlabs"
+    ],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "links": [],
+    "links": [
+      {
+        "name": "Project site",
+        "url": "https://github.com/newrelic/newrelic-grafana-plugin"
+      },
+      {
+        "name": "GNU Affero General Public License v3.0",
+        "url": "https://github.com/newrelic/newrelic-grafana-plugin/blob/master/LICENSE"
+      }
+    ],
     "screenshots": [],
     "version": "%VERSION%",
     "updated": "%TODAY%"
