@@ -290,8 +290,8 @@ To all contributors, we thank you! Without your contribution, this project would
 
 ## License
 
-This project is licensed under the terms of the GNU Affero General Public License v3.0 or New Relic Software License v. 1.0.
+This project is licensed under the GNU Affero General Public License v3.0.
 
-Please see the [LICENSE](LICENSE) file for full details on both licenses.
+Please see the [LICENSE](LICENSE) file for full details.
 
 The `newrelic-grafana-plugin` may use source code from third-party libraries. When used, these libraries will be outlined in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

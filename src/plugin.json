@@ -31,7 +31,16 @@
         "url": "https://github.com/newrelic/newrelic-grafana-plugin/blob/master/LICENSE"
       }
     ],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Configuration",
+        "path": "img/configuration.png"
+      },
+      {
+        "name": "Dashboard",
+        "path": "img/bar-chart.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
