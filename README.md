@@ -30,30 +30,70 @@ This project targets Grafana data source plugins and supports:
 
 ## Installation
 
-We recommend installing the plugin directly from the Grafana Catalog. For air-gapped or offline environments, a manual installation method is also available.
-
 ### Prerequisites
 
 - Grafana 10.4.0 or later
 - A New Relic account with a User API Key
+- Access to your Grafana server's file system (for manual installation)
 
-### From the Grafana Catalog (Recommended)
-This is the simplest way to install for most users.
+### Option 1: From the Grafana Catalog (Recommended)
+
+This is the simplest way to install for most users with internet-connected Grafana instances.
 
 #### Using the Grafana UI:
 1. Navigate to Administration → Plugins and Data → Plugins in your Grafana instance.
 2. Search for "New Relic".
 3. Click on the plugin, then click the Install button.
 
-
 #### Using the Command Line:
 Run the following command on your Grafana server:
 ```bash
 grafana-cli plugins install nrgrafanaplugin-newrelic-datasource
 ```
-After installing via either method, you must restart the Grafana server for the plugin to be recognized.
 
-For detailed instructions on how to install the plugin on Grafana Cloud or locally, please check out the [Plugin installation docs](https://grafana.com/docs/grafana/latest/administration/plugin-management/).
+After installing via either method, restart the Grafana server for the plugin to be recognized.
+
+### Option 2: Offline / Manual Installation Guide
+
+Use this method for air-gapped or offline environments where you cannot access the public Grafana Catalog.
+
+#### 1. Download the Plugin
+Go to the [GitHub Releases page](https://github.com/newrelic/newrelic-grafana-plugin/releases) and download the latest `.zip` file (e.g., `nrgrafanaplugin-newrelic-datasource-vX.Y.Z.zip`).
+
+#### 2. Install the Plugin
+Extract the downloaded `.zip` file into your Grafana instance's plugin directory. The default directory varies by OS:
+
+- **Linux**: `/var/lib/grafana/plugins`
+- **Windows**: `C:\Program Files\GrafanaLabs\grafana\data\plugins`
+
+The final path should look like:
+```
+/var/lib/grafana/plugins/nrgrafanaplugin-newrelic-datasource/
+```
+
+#### 3. Allow Unsigned Plugins
+Because this plugin is installed manually, it is considered "unsigned." You must configure your Grafana instance to allow it to load.
+
+Edit your `grafana.ini` configuration file or set the corresponding environment variable:
+
+**INI file (Recommended)**:
+```ini
+[plugins]
+allow_loading_unsigned_plugins = nrgrafanaplugin-newrelic-datasource
+```
+
+**Environment Variable**:
+```bash
+GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=nrgrafanaplugin-newrelic-datasource
+```
+
+#### 4. Restart Grafana
+Restart your Grafana server for all changes to take effect.
+
+#### 5. Verify Installation
+Log in to Grafana, navigate to Administration → Plugins, and search for "New Relic." The plugin should appear as installed.
+
+**For detailed instructions on how to install the plugin on Grafana Cloud or locally, please check out the [Plugin installation docs](https://grafana.com/docs/grafana/latest/administration/plugin-management/plugin-install/#install-a-plugin).**
 
 ## Grafana Setup
 
