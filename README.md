@@ -15,7 +15,6 @@ This plugin allows you to visualize New Relic data directly in Grafana dashboard
 * Multi-aggregation query support
 * Percentile calculations with object handling
 * Filter function support for error rate calculations
-* Template variable integration
 * Secure API key storage using Grafana's secure storage
 * Multi-region support (US and EU New Relic regions)
 * Time series data visualization with accurate time field handling
