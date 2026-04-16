@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"newrelic-grafana-plugin/pkg/formatter"
@@ -41,6 +42,15 @@ func shouldUseEnhancedQuery(query string) bool {
 	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
 	hasTimeseries := strings.Contains(strings.ToUpper(query), "TIMESERIES")
 	return hasFacet && hasTimeseries
+}
+
+// logQueryRegex matches "FROM Log" as a standalone event type (not "FROM LogMessage" etc.)
+var logQueryRegex = regexp.MustCompile(`(?i)\bFROM\s+Log\b`)
+
+// IsLogQuery determines if the NRQL query targets the Log event type.
+// Exported for testing.
+func IsLogQuery(query string) bool {
+	return logQueryRegex.MatchString(query)
 }
 
 // NormalizeQuery cleans up NRQL queries to fix common issues:
@@ -102,6 +112,27 @@ func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor,
 	return executor.QueryWithContext(ctx, accountID, nrql)
 }
 
+// injectTimeRange appends SINCE/UNTIL to the NRQL query using Grafana's time range
+// if the query doesn't already contain a SINCE clause. This ensures dashboards
+// respect the Grafana time picker automatically.
+func injectTimeRange(nrqlQuery string, timeRange backend.TimeRange) string {
+	upper := strings.ToUpper(nrqlQuery)
+	if strings.Contains(upper, "SINCE") || strings.Contains(upper, "COMPARE WITH") {
+		return nrqlQuery
+	}
+
+	fromMs := timeRange.From.UnixMilli()
+	toMs := timeRange.To.UnixMilli()
+
+	if fromMs > 0 && toMs > 0 {
+		injected := fmt.Sprintf("%s SINCE %d UNTIL %d", nrqlQuery, fromMs, toMs)
+		log.DefaultLogger.Debug("Injected Grafana time range into NRQL",
+			"from", timeRange.From, "to", timeRange.To, "query", injected)
+		return injected
+	}
+	return nrqlQuery
+}
+
 // checkFacetAndTimeseries logs if both FACET and TIMESERIES are present in the query
 func checkFacetAndTimeseries(query string) {
 	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
@@ -123,7 +154,7 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return resp
 	}
 
-	log.DefaultLogger.Debug("Processing query", "refId", query.RefID, "queryText", qm.QueryText, "configAccountID", config.Secrets.AccountId, "queryAccountID", qm.AccountID)
+	log.DefaultLogger.Debug("Processing query", "refId", query.RefID)
 
 	// Check if query is empty
 	if qm.QueryText == "" {
@@ -135,6 +166,9 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 	// Normalize the query by removing line breaks that cause issues
 	nrqlQueryText := NormalizeQuery(qm.QueryText)
 
+	// Auto-inject Grafana time range if no SINCE clause present
+	nrqlQueryText = injectTimeRange(nrqlQueryText, query.TimeRange)
+
 	accountID := config.Secrets.AccountId
 	if qm.AccountID > 0 {
 		accountID = qm.AccountID
@@ -143,25 +177,69 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 	results, err := ExecuteNRQLQuery(ctx, executor, accountID, nrqlQueryText)
 	if err != nil {
 		resp.Error = fmt.Errorf("NRQL query execution failed: %w", err)
-		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "query", nrqlQueryText, "accountID", accountID, "error", err)
+		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "error", err)
 		return resp
 	}
 
-	// DEBUG: Log the actual response structure to understand the issue
-	if resultsJSON, err := json.MarshalIndent(results, "", "  "); err == nil {
-		log.DefaultLogger.Debug("Raw API response", "refId", query.RefID, "type", fmt.Sprintf("%T", results), "response", string(resultsJSON))
-	}
+	log.DefaultLogger.Debug("Query executed", "refId", query.RefID, "responseType", fmt.Sprintf("%T", results))
 
+	// First, try legacy formatters for known response types
+	// Only use universal formatter as a fallback for unhandled cases
 	switch r := results.(type) {
 	case *nrdb.NRDBResultContainer:
+		// Route log queries to the log formatter for proper Logs panel rendering
+		if IsLogQuery(nrqlQueryText) {
+			log.DefaultLogger.Debug("Using log formatter", "refId", query.RefID)
+			return formatter.FormatLogResults(r, query, nrqlQueryText)
+		}
+
 		log.DefaultLogger.Debug("Using standard formatter", "refId", query.RefID)
-		return formatter.FormatQueryResults(r, query)
+		legacyResp := formatter.FormatQueryResults(r, query)
+
+		// If legacy formatter succeeded, use it
+		if legacyResp.Error == nil && len(legacyResp.Frames) > 0 {
+			log.DefaultLogger.Debug("Standard formatter succeeded", "refId", query.RefID, "frameCount", len(legacyResp.Frames))
+			return legacyResp
+		}
+
+		// Legacy formatter failed, try universal formatter
+		log.DefaultLogger.Debug("Standard formatter returned no data, trying universal formatter", "refId", query.RefID)
+		return formatter.FormatUniversal(results, query)
+
 	case *nrdb.NRDBResultContainerMultiResultCustomized:
+		// Check if RawResponse contains nested facets structure
+		log.DefaultLogger.Debug("Checking RawResponse for nested facets", "refId", query.RefID, "hasRawResponse", r.RawResponse != nil)
+		if r.RawResponse != nil {
+			log.DefaultLogger.Debug("RawResponse keys", "refId", query.RefID, "keys", func() []string {
+				keys := make([]string, 0, len(r.RawResponse))
+				for k := range r.RawResponse {
+					keys = append(keys, k)
+				}
+				return keys
+			}())
+
+			if facets, hasFacets := r.RawResponse["facets"]; hasFacets && facets != nil {
+				log.DefaultLogger.Debug("Detected nested facets in RawResponse, using universal formatter", "refId", query.RefID)
+				return formatter.FormatUniversal(r.RawResponse, query)
+			}
+		}
+
 		log.DefaultLogger.Debug("Using faceted timeseries formatter", "refId", query.RefID)
-		return formatter.FormatFacetedTimeseriesResults(r, query)
+		legacyResp := formatter.FormatFacetedTimeseriesResults(r, query)
+
+		// If legacy formatter succeeded, use it
+		if legacyResp.Error == nil && len(legacyResp.Frames) > 0 {
+			log.DefaultLogger.Debug("Faceted timeseries formatter succeeded", "refId", query.RefID, "frameCount", len(legacyResp.Frames))
+			return legacyResp
+		}
+
+		// Legacy formatter failed, try universal formatter
+		log.DefaultLogger.Debug("Faceted timeseries formatter returned no data, trying universal formatter", "refId", query.RefID)
+		return formatter.FormatUniversal(results, query)
+
 	default:
-		resp.Error = fmt.Errorf("unexpected result type from NRQL query execution")
-		log.DefaultLogger.Error("Unexpected result type", "refId", query.RefID, "type", fmt.Sprintf("%T", results))
-		return resp
+		// Unknown response type - use universal formatter
+		log.DefaultLogger.Debug("Unknown response type, using universal formatter", "refId", query.RefID, "type", fmt.Sprintf("%T", results))
+		return formatter.FormatUniversal(results, query)
 	}
 }

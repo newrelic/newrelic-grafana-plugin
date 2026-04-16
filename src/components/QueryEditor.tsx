@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { Button, Switch, ButtonGroup, Icon, Tooltip } from '@grafana/ui';
+import { Button, Switch, ButtonGroup, Icon, Tooltip, CodeEditor } from '@grafana/ui';
 import { DataSource } from '../datasource';
 import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
 import { validateNrqlQuery } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VARIABLES } from '../utils/timeUtils';
-import * as monaco from 'monaco-editor';
-import { loader } from '@monaco-editor/react';
-
-loader.config({ monaco });
-import { Editor } from '@monaco-editor/react';
+import { registerNrqlCompletionProvider } from '../utils/nrqlCompletions';
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
 /**
@@ -26,21 +22,18 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   );
 
   //On Editor Change Callback function
-  function handleEditorChange(queryString: any, event: any) {
+  function handleEditorChange(queryString: string) {
     handleNRQLChange(queryString);
   }
 
-   //On Editor did mount life cycle hook function
+  //On Editor did mount life cycle hook function
   function handleEditorDidMount(editor: any, monaco: any) {
-    
-  }
- //On Editor will mount hook function
-  function handleEditorWillMount(monaco: any) {
-  }
-
-  //On Editor Validation Callback function
-  function handleEditorValidation(markers: any) {
-   
+    // Sync editor content with query text on mount — getDefaultQuery() may
+    // populate query.queryText after the initial rawNRQL state is set to ''.
+    if (query.queryText && editor.getValue() !== query.queryText) {
+      editor.setValue(query.queryText);
+      setRawNRQL(query.queryText);
+    }
   }
   // Local state for the raw NRQL text
   const [rawNRQL, setRawNRQL] = useState(query.queryText || '');
@@ -78,6 +71,18 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       return false;
     }
   }, [query.refId]);
+
+  // Populate default query on mount if editor is empty
+  useEffect(() => {
+    if (!query.queryText || query.queryText.trim() === '') {
+      const defaultQuery = useGrafanaTime
+        ? 'SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to'
+        : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
+      setRawNRQL(defaultQuery);
+      onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Update rawNRQL when query changes externally (but don't validate)
   useEffect(() => {
@@ -319,18 +324,16 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       ) : (
         <div role="region" aria-label="NRQL Text Editor">
 
-          <Editor
-            height="10vh"
-            theme='vs-dark'
-            options={{ minimap: { enabled: false } }}
-            defaultLanguage="sql"
-            defaultValue="-- Write your SQL here"
-            onChange={handleEditorChange}
-            onMount={handleEditorDidMount}
-            beforeMount={handleEditorWillMount}
-            onValidate={handleEditorValidation}
+          <CodeEditor
+            height="150px"
+            language="sql"
             value={rawNRQL}
-            data-testid="nrql-textarea"
+            onBlur={handleEditorChange}
+            onChange={handleEditorChange}
+            onBeforeEditorMount={(monaco) => registerNrqlCompletionProvider(monaco)}
+            onEditorDidMount={handleEditorDidMount}
+            showMiniMap={false}
+            monacoOptions={{ wordWrap: 'on' }}
           />
          
 

@@ -1,19 +1,20 @@
-
-// IMPORTANT: This single, comprehensive mock must be at the very top
-jest.mock('@monaco-editor/react', () => ({
-  __esModule: true,
-  loader: {
-    config: jest.fn(),
-  },
-  Editor: (props: any) => {
-    return (
+// Mock @grafana/ui — keep real components, override CodeEditor with a testable textarea
+jest.mock('@grafana/ui', () => {
+  const actual = jest.requireActual('@grafana/ui');
+  return {
+    ...actual,
+    CodeEditor: (props: any) => (
       <textarea
-        data-testid={props['data-testid'] || 'nrql-textarea'}
+        data-testid="nrql-textarea"
         value={props.value}
-        onChange={e => props.onChange && props.onChange(e.target.value, e)}
+        onChange={e => props.onChange && props.onChange(e.target.value)}
       />
-    );
-  },
+    ),
+  };
+});
+
+jest.mock('../../utils/nrqlCompletions', () => ({
+  registerNrqlCompletionProvider: jest.fn(),
 }));
 
 import React from 'react';

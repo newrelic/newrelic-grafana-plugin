@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"newrelic-grafana-plugin/pkg/models"
 	"newrelic-grafana-plugin/pkg/nrdbiface"
@@ -470,4 +472,72 @@ func TestHandleEdgeCases_QueryHandler(t *testing.T) {
 		assert.NotNil(t, response.Error)
 		assert.Contains(t, response.Error.Error(), "query text cannot be empty")
 	})
+}
+
+func TestInjectTimeRange(t *testing.T) {
+	now := time.Now()
+	from := now.Add(-6 * time.Hour)
+	tr := backend.TimeRange{From: from, To: now}
+
+	tests := []struct {
+		name     string
+		query    string
+		expected string
+	}{
+		{
+			name:     "injects when no SINCE",
+			query:    "SELECT count(*) FROM Transaction",
+			expected: "SELECT count(*) FROM Transaction SINCE " + fmt.Sprintf("%d", from.UnixMilli()) + " UNTIL " + fmt.Sprintf("%d", now.UnixMilli()),
+		},
+		{
+			name:     "skips when SINCE present",
+			query:    "SELECT count(*) FROM Transaction SINCE 1 hour ago",
+			expected: "SELECT count(*) FROM Transaction SINCE 1 hour ago",
+		},
+		{
+			name:     "skips when since lowercase",
+			query:    "SELECT count(*) FROM Transaction since 30 minutes ago",
+			expected: "SELECT count(*) FROM Transaction since 30 minutes ago",
+		},
+		{
+			name:     "skips when COMPARE WITH present",
+			query:    "SELECT count(*) FROM Transaction COMPARE WITH 1 hour ago",
+			expected: "SELECT count(*) FROM Transaction COMPARE WITH 1 hour ago",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := injectTimeRange(tt.query, tr)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsLogQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		expected bool
+	}{
+		{"basic FROM Log", "SELECT * FROM Log", true},
+		{"lowercase from log", "select * from log", true},
+		{"mixed case", "Select * From Log", true},
+		{"with WHERE", "SELECT * FROM Log WHERE level = 'ERROR'", true},
+		{"with FACET", "SELECT message FROM Log FACET hostname", true},
+		{"with TIMESERIES", "SELECT count(*) FROM Log TIMESERIES", true},
+		{"FROM LogMessage should not match", "SELECT * FROM LogMessage", false},
+		{"FROM TransactionLog should not match", "SELECT * FROM TransactionLog", false},
+		{"FROM Transaction", "SELECT * FROM Transaction", false},
+		{"FROM Transaction with log in WHERE", "SELECT * FROM Transaction WHERE message LIKE '%log%'", false},
+		{"multi-event FROM Log, Transaction", "SELECT * FROM Log, Transaction", true},
+		{"empty query", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsLogQuery(tt.query)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

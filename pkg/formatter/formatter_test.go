@@ -79,11 +79,9 @@ func TestFormatQueryResults(t *testing.T) {
 			},
 			query: query,
 			validate: func(t *testing.T, resp *backend.DataResponse) {
-				require.Len(t, resp.Frames, 2)
+				require.Len(t, resp.Frames, 1)
 				assert.Equal(t, "count", resp.Frames[0].Name)
 				assert.Equal(t, data.VisType(data.VisTypeTable), resp.Frames[0].Meta.PreferredVisualization)
-				assert.Equal(t, utils.CountTimeSeriesFrameName, resp.Frames[1].Name)
-				assert.Equal(t, data.VisTypeGraph, resp.Frames[1].Meta.PreferredVisualization)
 			},
 		},
 		{
@@ -2595,7 +2593,7 @@ func TestHandlePercentileField_Formatter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			frame := data.NewFrame("test")
-			handlePercentileField(frame, tt.results, tt.fieldName)
+			handleNestedObjectField(frame, tt.results, tt.fieldName)
 
 			assert.Equal(t, tt.expectedFields, len(frame.Fields), "Incorrect number of fields created")
 			if tt.fieldAssertions != nil {
@@ -3547,7 +3545,7 @@ func TestHandlePercentileFieldExtended(t *testing.T) {
 		}
 
 		// Process percentiles
-		handlePercentileField(frame, results, "percentile.duration")
+		handleNestedObjectField(frame, results, "percentile.duration")
 
 		// Should have one field for the 95th percentile
 		assert.Equal(t, 1, len(frame.Fields))
@@ -3582,7 +3580,7 @@ func TestHandlePercentileFieldExtended(t *testing.T) {
 		}
 
 		// Process percentiles
-		handlePercentileField(frame, results, "percentile.duration")
+		handleNestedObjectField(frame, results, "percentile.duration")
 
 		// Should have three fields, one for each percentile
 		assert.Equal(t, 3, len(frame.Fields))
@@ -3622,7 +3620,7 @@ func TestHandlePercentileFieldExtended(t *testing.T) {
 		}
 
 		// Process percentiles
-		handlePercentileField(frame, results, "percentile.duration")
+		handleNestedObjectField(frame, results, "percentile.duration")
 
 		// Should have one field
 		assert.Equal(t, 1, len(frame.Fields))
@@ -3649,7 +3647,7 @@ func TestHandlePercentileFieldExtended(t *testing.T) {
 		}
 
 		// Process percentiles
-		handlePercentileField(frame, results, "percentile.duration")
+		handleNestedObjectField(frame, results, "percentile.duration")
 
 		// Should have correctly parsed the string value
 		assert.Equal(t, 1, len(frame.Fields))
@@ -4122,4 +4120,164 @@ func TestFormatFacetedTimeseriesQueryBasic(t *testing.T) {
 	assert.NotNil(t, response)
 	assert.Nil(t, response.Error)
 	assert.Equal(t, 2, len(response.Frames))
+}
+
+func TestIsCompareWithQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		results  *nrdb.NRDBResultContainer
+		expected bool
+	}{
+		{
+			name: "COMPARE WITH query",
+			results: &nrdb.NRDBResultContainer{
+				Results: []nrdb.NRDBResult{
+					{"comparison": "current", "Valid Auth": 99.27, "Total Requests": float64(22553411)},
+					{"comparison": "previous", "Valid Auth": 99.25, "Total Requests": float64(22573808)},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "regular query without comparison",
+			results: &nrdb.NRDBResultContainer{
+				Results: []nrdb.NRDBResult{
+					{"count": float64(100)},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "single result with comparison field",
+			results: &nrdb.NRDBResultContainer{
+				Results: []nrdb.NRDBResult{
+					{"comparison": "current", "count": float64(100)},
+				},
+			},
+			expected: false, // needs at least 2 results
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isCompareWithQuery(tt.results)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFormatCompareWithQuery(t *testing.T) {
+	now := time.Now()
+	query := backend.DataQuery{
+		TimeRange: backend.TimeRange{
+			From: now.Add(-1 * time.Hour),
+			To:   now,
+		},
+	}
+
+	results := &nrdb.NRDBResultContainer{
+		Results: []nrdb.NRDBResult{
+			{
+				"comparison":     "current",
+				"Valid Auth":     99.27,
+				"Denied Request": 0.73,
+				"Total Requests": float64(22553411),
+			},
+			{
+				"comparison":     "previous",
+				"Valid Auth":     99.25,
+				"Denied Request": 0.75,
+				"Total Requests": float64(22573808),
+			},
+		},
+	}
+
+	response := formatCompareWithQuery(results, query)
+
+	require.NotNil(t, response)
+	require.Nil(t, response.Error)
+	require.Equal(t, 2, len(response.Frames), "should have current and previous frames")
+
+	// Current frame should have numeric fields without labels
+	currentFrame := response.Frames[0]
+	assert.Equal(t, "current", currentFrame.Name)
+	// time + 3 metric fields
+	assert.GreaterOrEqual(t, len(currentFrame.Fields), 4)
+
+	// Previous frame should have fields with "previous" label
+	previousFrame := response.Frames[1]
+	assert.Equal(t, "previous", previousFrame.Name)
+	assert.GreaterOrEqual(t, len(previousFrame.Fields), 4)
+
+	// Check that previous frame fields have comparison label
+	for _, field := range previousFrame.Fields {
+		if field.Name != "time" {
+			labels := field.Labels
+			assert.Equal(t, "previous", labels["comparison"])
+		}
+	}
+}
+
+func TestFormatCompareWithQuery_RoutedCorrectly(t *testing.T) {
+	now := time.Now()
+	query := backend.DataQuery{
+		TimeRange: backend.TimeRange{
+			From: now.Add(-1 * time.Hour),
+			To:   now,
+		},
+	}
+
+	results := &nrdb.NRDBResultContainer{
+		Results: []nrdb.NRDBResult{
+			{"comparison": "current", "count": float64(100)},
+			{"comparison": "previous", "count": float64(90)},
+		},
+	}
+
+	response := FormatQueryResults(results, query)
+
+	require.NotNil(t, response)
+	require.Nil(t, response.Error)
+	require.Equal(t, 2, len(response.Frames))
+	assert.Equal(t, "current", response.Frames[0].Name)
+	assert.Equal(t, "previous", response.Frames[1].Name)
+}
+
+func TestArrayFieldsRenderedAsCommaSeparated(t *testing.T) {
+	now := time.Now()
+	query := backend.DataQuery{
+		TimeRange: backend.TimeRange{
+			From: now.Add(-1 * time.Hour),
+			To:   now,
+		},
+	}
+
+	results := &nrdb.NRDBResultContainer{
+		Results: []nrdb.NRDBResult{
+			{
+				"access-control-allow-methods": []interface{}{"GET", "POST", "PUT"},
+			},
+		},
+	}
+
+	response := FormatQueryResults(results, query)
+
+	require.NotNil(t, response)
+	require.Nil(t, response.Error)
+	require.GreaterOrEqual(t, len(response.Frames), 1)
+
+	// Find the array field
+	frame := response.Frames[0]
+	found := false
+	for _, field := range frame.Fields {
+		if field.Name == "access-control-allow-methods" {
+			found = true
+			require.Equal(t, 1, field.Len())
+			val := field.At(0)
+			strVal, ok := val.(string)
+			require.True(t, ok, "array field should be string type")
+			assert.Equal(t, "GET, POST, PUT", strVal)
+		}
+	}
+	assert.True(t, found, "should find access-control-allow-methods field")
 }
