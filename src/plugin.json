@@ -4,6 +4,8 @@
   "name": "New Relic",
   "id": "nrgrafanaplugin-newrelic-datasource",
   "metrics": true,
+  "logs": true,
+  "alerting": true,
   "backend": true,
   "executable": "gpx_nrgrafanaplugin_newrelic_datasource",
   "info": {

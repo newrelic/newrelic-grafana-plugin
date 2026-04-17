@@ -1,3 +1,6 @@
+# Build artifacts
+nrgrafanaplugin-newrelic-datasource/
+
 # Logs
 logs
 *.log

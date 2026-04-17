@@ -16,37 +16,37 @@ describe('Validation Utils', () => {
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT * FROM Span').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT average(duration) FROM Transaction').isValid).toBe(true);
-      
+
       // Queries with WHERE clause
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE appName = "MyApp"').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE duration > 100').isValid).toBe(true);
-      
+
       // Queries with FACET clause
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction FACET appName').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction FACET appName, host').isValid).toBe(true);
-      
+
       // Queries with time clauses
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction SINCE 1 hour ago').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction SINCE 1 hour ago UNTIL 30 minutes ago').isValid).toBe(true);
-      
+
       // Queries with TIMESERIES
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES AUTO').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction TIMESERIES 5 minutes').isValid).toBe(true);
-      
+
       // Queries with LIMIT
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction LIMIT 100').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction LIMIT 1000').isValid).toBe(true);
-      
+
       // Complex queries
       const complexQuery = 'SELECT average(duration) FROM Transaction WHERE appName = "MyApp" FACET host SINCE 1 hour ago TIMESERIES AUTO LIMIT 100';
       expect(validateNrqlQuery(complexQuery).isValid).toBe(true);
-      
+
       // Case insensitive
       expect(validateNrqlQuery('select count(*) from Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT COUNT(*) FROM TRANSACTION').isValid).toBe(true);
       expect(validateNrqlQuery('Select Average(duration) From Transaction').isValid).toBe(true);
-      
+
       // Aggregation functions
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT average(duration) FROM Transaction').isValid).toBe(true);
@@ -56,11 +56,11 @@ describe('Validation Utils', () => {
       expect(validateNrqlQuery('SELECT percentile(duration, 95) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT uniqueCount(userId) FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT latest(timestamp) FROM Transaction').isValid).toBe(true);
-      
+
       // Multiple attributes
       expect(validateNrqlQuery('SELECT duration, responseTime FROM Transaction').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT appName, host, duration FROM Transaction').isValid).toBe(true);
-      
+
       // Special characters
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE appName = "My-App_2023"').isValid).toBe(true);
       expect(validateNrqlQuery('SELECT count(*) FROM Transaction WHERE host LIKE "%prod%"').isValid).toBe(true);
@@ -473,7 +473,7 @@ describe('Validation Utils', () => {
         [],
         true,
         false,
-        function() {},
+        function () { },
       ];
 
       invalidInputs.forEach(input => {

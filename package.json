@@ -1,6 +1,6 @@
 {
   "name": "newrelic-grafana-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A comprehensive Grafana data source plugin for New Relic with full NRQL support",
   "keywords": [
     "grafana",
@@ -92,7 +92,6 @@
     "@grafana/runtime": "^12.0.1",
     "@grafana/schema": "^12.0.1",
     "@grafana/ui": "^12.0.1",
-    "@monaco-editor/react": "^4.7.0",
     "big-integer": "^1.6.52",
     "react": "18.2.0",
     "react-dom": "18.2.0"

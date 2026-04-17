@@ -28,17 +28,16 @@ func IsCountQuery(results *nrdb.NRDBResultContainer) bool {
 func FormatQueryResults(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 
-	// Print results as JSON for debugging
-	resultsJSON, _ := json.MarshalIndent(results, "", "  ")
-	log.DefaultLogger.Debug("Result count: %d\nResults:\n%s",
-		len(results.Results), string(resultsJSON))
+	log.DefaultLogger.Debug("Result count", "count", len(results.Results))
 
 	if len(results.Results) == 0 {
 		return resp
 	}
 
 	// Route to appropriate formatter based on query type
-	if isSimpleCountQuery(results) {
+	if isCompareWithQuery(results) {
+		return formatCompareWithQuery(results, query)
+	} else if isSimpleCountQuery(results) {
 		return formatSimpleCountQuery(results, query)
 	} else if isFacetedCountQuery(results) {
 		return formatFacetedCountQuery(results, query)
@@ -50,11 +49,112 @@ func FormatQueryResults(results *nrdb.NRDBResultContainer, query backend.DataQue
 	}
 }
 
-// isSimpleCountQuery checks if the results represent a simple count query
+// isCompareWithQuery checks if the results contain COMPARE WITH data.
+// NR returns a "comparison" field with values "current" and "previous".
+func isCompareWithQuery(results *nrdb.NRDBResultContainer) bool {
+	if len(results.Results) < 2 {
+		return false
+	}
+	_, hasComparison := results.Results[0]["comparison"]
+	return hasComparison
+}
+
+// formatCompareWithQuery formats COMPARE WITH results into separate current/previous frames.
+// Current values are displayed as primary metrics; previous values get a "previous" label.
+func formatCompareWithQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
+	resp := &backend.DataResponse{}
+
+	// Separate current and previous results
+	var currentResults, previousResults []nrdb.NRDBResult
+	for _, result := range results.Results {
+		if comp, ok := result["comparison"].(string); ok {
+			switch comp {
+			case "current":
+				currentResults = append(currentResults, result)
+			case "previous":
+				previousResults = append(previousResults, result)
+			}
+		}
+	}
+
+	log.DefaultLogger.Debug("COMPARE WITH query detected",
+		"currentCount", len(currentResults),
+		"previousCount", len(previousResults))
+
+	// Collect metric field names from current results (exclude system fields)
+	excludeFields := map[string]bool{
+		"comparison": true, "timestamp": true, "inspectedCount": true,
+		"beginTimeSeconds": true, "endTimeSeconds": true,
+	}
+
+	var metricFields []string
+	if len(currentResults) > 0 {
+		for key := range currentResults[0] {
+			if !excludeFields[key] {
+				metricFields = append(metricFields, key)
+			}
+		}
+	}
+
+	now := time.Now()
+
+	// Create frame for current values (primary display)
+	currentFrame := data.NewFrame("current")
+	currentFrame.Fields = append(currentFrame.Fields,
+		data.NewField("time", nil, []time.Time{now}))
+
+	for _, fieldName := range metricFields {
+		if len(currentResults) > 0 {
+			if val, ok := currentResults[0][fieldName].(float64); ok {
+				currentFrame.Fields = append(currentFrame.Fields,
+					data.NewField(fieldName, nil, []float64{val}))
+			}
+		}
+	}
+	resp.Frames = append(resp.Frames, currentFrame)
+
+	// Create frame for previous values with comparison label
+	if len(previousResults) > 0 {
+		previousFrame := data.NewFrame("previous")
+		previousFrame.Fields = append(previousFrame.Fields,
+			data.NewField("time", nil, []time.Time{now.Add(-time.Hour)}))
+
+		for _, fieldName := range metricFields {
+			if val, ok := previousResults[0][fieldName].(float64); ok {
+				labels := map[string]string{"comparison": "previous"}
+				previousFrame.Fields = append(previousFrame.Fields,
+					data.NewField(fieldName, labels, []float64{val}))
+			}
+		}
+		resp.Frames = append(resp.Frames, previousFrame)
+	}
+
+	return resp
+}
+
+// isSimpleCountQuery checks if the results represent a simple count query.
+// It verifies that "count" is the ONLY meaningful metric field in the result.
+// This prevents misdetecting apdex queries (which also have "count" alongside
+// "score", "s", "t", "f", and "apdex.duration") as simple count queries.
 func isSimpleCountQuery(results *nrdb.NRDBResultContainer) bool {
-	return len(results.Results) == 1 &&
-		results.Results[0][utils.CountFieldName] != nil &&
-		results.Results[0][utils.FacetFieldName] == nil
+	if len(results.Results) != 1 ||
+		results.Results[0][utils.CountFieldName] == nil ||
+		results.Results[0][utils.FacetFieldName] != nil {
+		return false
+	}
+
+	// Verify count is the ONLY metric field (exclude internal fields)
+	internalFields := map[string]bool{
+		"count": true, "inspectedCount": true,
+		"beginTimeSeconds": true, "endTimeSeconds": true,
+		"timestamp": true,
+	}
+	for key := range results.Results[0] {
+		if !internalFields[key] {
+			return false // Has additional fields (apdex score, s, t, f, etc.)
+		}
+	}
+	return true
 }
 
 // isFacetedCountQuery checks if the results represent a faceted count query
@@ -146,14 +246,16 @@ func hasTimeseriesDataMulti(results *nrdb.NRDBResultContainerMultiResultCustomiz
 	return false
 }
 
-// formatSimpleCountQuery formats results from a simple count query
+// formatSimpleCountQuery formats results from a simple count query.
+// Returns a single frame with the count value. Grafana stat/table panels
+// display this directly. For time series panels, users should use TIMESERIES.
 func formatSimpleCountQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
 	resp := &backend.DataResponse{}
 
 	// Extract count value
 	count := extractCountValue(results.Results[0])
 
-	// Frame 1: For table/stat panels - just the count with no time
+	// Single frame with count value - works in stat, table, and gauge panels
 	valueFrame := data.NewFrame("count",
 		data.NewField("count", nil, []float64{count}),
 	)
@@ -161,11 +263,7 @@ func formatSimpleCountQuery(results *nrdb.NRDBResultContainer, query backend.Dat
 		PreferredVisualization: data.VisTypeTable,
 	}
 
-	// Frame 2: For time series/graph panels - count with time points
-	graphFrame := createCountTimeSeriesFrame(count, query)
-
-	// Add both frames to the response
-	resp.Frames = append(resp.Frames, valueFrame, graphFrame)
+	resp.Frames = append(resp.Frames, valueFrame)
 	return resp
 }
 
@@ -215,19 +313,15 @@ func formatFacetedCountQuery(results *nrdb.NRDBResultContainer, query backend.Da
 
 	// Get facet names
 	facetNames := extractFacetNames(results)
-	log.DefaultLogger.Debug("Facet names extracted: %v", facetNames)
+	log.DefaultLogger.Debug("Facet names extracted", "facetNames", facetNames)
 
 	// Extract data
 	counts, facetFields := extractFacetedData(results, facetNames)
-	log.DefaultLogger.Debug("Counts: %v, Facet fields: %v", counts, facetFields)
+	log.DefaultLogger.Debug("Extracted faceted data", "counts", counts, "facetFields", facetFields)
 
-	// Create separate frames for each facet value (like Grafana Cloud plugin)
+	// Create separate frames for each result with ALL facet dimensions as labels
 	if len(facetNames) > 0 {
-		facetName := facetNames[0] // Use the first facet for labels
-		facetValues := facetFields[facetName]
-
-		for i, facetValue := range facetValues {
-			// Create a frame for each facet value
+		for i := range results.Results {
 			frame := data.NewFrame("")
 
 			// Add time field
@@ -235,17 +329,22 @@ func formatFacetedCountQuery(results *nrdb.NRDBResultContainer, query backend.Da
 			frame.Fields = append(frame.Fields,
 				data.NewField("time", nil, []time.Time{now}))
 
-			// Add count field with facet label (matching Grafana Cloud plugin)
-			countField := data.NewField("count", map[string]string{
-				facetName: facetValue,
-			}, []float64{counts[i]})
+			// Build labels from ALL facet dimensions (not just the first one)
+			labels := make(map[string]string)
+			for _, facetName := range facetNames {
+				if values, ok := facetFields[facetName]; ok && i < len(values) {
+					labels[facetName] = values[i]
+				}
+			}
+
+			countField := data.NewField("count", labels, []float64{counts[i]})
 			frame.Fields = append(frame.Fields, countField)
 
 			resp.Frames = append(resp.Frames, frame)
 		}
 	}
 
-	log.DefaultLogger.Debug("Total frames in response: %d", len(resp.Frames))
+	log.DefaultLogger.Debug("Total frames in response", "frameCount", len(resp.Frames))
 
 	return resp
 }
@@ -260,7 +359,7 @@ func createPieChartFrame(facetNames []string, counts []float64, facetFields map[
 		facetName := facetNames[0] // Use the first facet for pie chart labels
 		labels := facetFields[facetName]
 
-		log.DefaultLogger.Debug("Creating pie chart frame: facet=%s, labels=%v, counts=%v", facetName, labels, counts)
+		log.DefaultLogger.Debug("Creating pie chart frame", "facet", facetName, "labels", labels, "counts", counts)
 
 		// Create fields for pie chart - labels first, then values
 		pieFrame.Fields = append(pieFrame.Fields,
@@ -302,6 +401,47 @@ func extractFacetNamesMulti(results *nrdb.NRDBResultContainerMultiResultCustomiz
 		return metadata.Facets
 	}
 	return nil
+}
+
+// extractAliasesFromMetadataMulti extracts metric field names from results for Multi type
+// Since the flattened response doesn't preserve alias metadata, we extract field names from actual results
+// Returns an array of metric field names like ["Errors", "Success", "Error %"] or ["count", "sum.duration", etc.]
+func extractAliasesFromMetadataMulti(results *nrdb.NRDBResultContainerMultiResultCustomized) []string {
+	var fieldNames []string
+	seenFields := make(map[string]bool)
+
+	// Build a set of facet names to exclude facet value fields (e.g., "host", "appName")
+	// These are duplicates of the "facet" field and should not be treated as metrics
+	facetNameSet := make(map[string]bool)
+	for _, fn := range extractFacetNamesMulti(results) {
+		facetNameSet[fn] = true
+	}
+
+	// Get the results to process
+	resultsToProcess := results.Results
+	if len(resultsToProcess) == 0 {
+		resultsToProcess = results.OtherResult
+	}
+
+	// Extract unique field names from the first few results
+	// (they should all have the same structure)
+	for i, result := range resultsToProcess {
+		if i >= 5 { // Only check first 5 results for efficiency
+			break
+		}
+
+		for key := range result {
+			// Skip non-metric fields AND facet value fields (e.g., "host", "request.uri")
+			if key != "timestamp" && key != "beginTimeSeconds" && key != "endTimeSeconds" &&
+			   key != "facet" && key != "inspectedCount" && !seenFields[key] && !facetNameSet[key] {
+				fieldNames = append(fieldNames, key)
+				seenFields[key] = true
+			}
+		}
+	}
+
+	log.DefaultLogger.Debug("Extracted metric field names from results (Multi)", "fieldNames", fieldNames, "count", len(fieldNames))
+	return fieldNames
 }
 
 // extractFacetedData extracts counts and facet values from results
@@ -422,9 +562,11 @@ func formatStandardQuery(results *nrdb.NRDBResultContainer, query backend.DataQu
 	// Extract field names
 	fieldNames := extractFieldNames(results)
 
-	// Add time field
+	// Add time field with bucket interval
 	times := createTimeField(results, query)
-	frame.Fields = append(frame.Fields, data.NewField(utils.TimeFieldName, nil, times))
+	timeField := data.NewField(utils.TimeFieldName, nil, times)
+	setTimeFieldInterval(timeField, calculateBucketIntervalMs(results.Results))
+	frame.Fields = append(frame.Fields, timeField)
 
 	// Add data fields
 	addDataFields(frame, results, fieldNames)
@@ -442,11 +584,9 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 		return resp
 	}
 
-	facetName := facetNames[0] // Use the first facet for grouping
-
-	// Group results by facet value
-	facetData := groupResultsByFacet(results, facetName)
-	log.DefaultLogger.Debug("Faceted aggregation - Grouped into %d facet groups", len(facetData))
+	// Group results by ALL facet values (not just the first one)
+	facetData := groupResultsByAllFacets(results, facetNames)
+	log.DefaultLogger.Debug("Faceted aggregation - Grouped facet groups", "groupCount", len(facetData))
 
 	// Get all field names and filter to only include aggregation fields
 	allFieldNames := extractFieldNames(results)
@@ -459,32 +599,34 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 		}
 	}
 
-	log.DefaultLogger.Debug("Faceted aggregation - Aggregation fields: %v", aggregationFields)
+	log.DefaultLogger.Debug("Faceted aggregation - Aggregation fields", "fields", aggregationFields)
 
-	// Create separate frames for each facet value
-	for facetValue, facetResults := range facetData {
-		// Use facet value directly in the frame name
-		log.DefaultLogger.Debug("Creating frame with facet value: %s", facetValue)
-		frame := data.NewFrame(facetValue)
-		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
-		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
+	// Create separate frames for each facet combination
+	for facetKey, facetInfo := range facetData {
+		// Use facet key as the frame name
+		log.DefaultLogger.Debug("Creating frame with facet key", "facetKey", facetKey)
+		frame := data.NewFrame(facetKey)
+		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetInfo.Results}, query)
+		timeField := data.NewField("time", nil, times)
+		setTimeFieldInterval(timeField, calculateBucketIntervalMs(facetInfo.Results))
+		frame.Fields = append(frame.Fields, timeField)
 
 		// Add aggregation fields with facet labels
 		for _, fieldName := range aggregationFields {
 			// Handle different aggregation field types
 			if strings.HasPrefix(fieldName, "percentile.") {
 				// Handle percentile objects - extract individual percentile values
-				addPercentileFields(frame, facetResults, fieldName, facetName, facetValue)
+				addPercentileFieldsWithLabels(frame, facetInfo.Results, fieldName, facetInfo.Labels)
 			} else {
 				// Handle regular aggregation fields (sum.duration, average.duration, etc.)
-				addRegularAggregationField(frame, facetResults, fieldName, facetName, facetValue)
+				addRegularAggregationFieldWithLabels(frame, facetInfo.Results, fieldName, facetInfo.Labels)
 			}
 		}
 
 		resp.Frames = append(resp.Frames, frame)
 	}
 
-	log.DefaultLogger.Debug("Faceted aggregation - Total frames in response: %d", len(resp.Frames))
+	log.DefaultLogger.Debug("Faceted aggregation - Total frames in response", "frameCount", len(resp.Frames))
 	return resp
 }
 
@@ -564,6 +706,75 @@ func addRegularAggregationField(frame *data.Frame, facetResults []nrdb.NRDBResul
 	frame.Fields = append(frame.Fields, field)
 }
 
+// addPercentileFieldsWithLabels handles percentile objects with multiple facet labels
+func addPercentileFieldsWithLabels(frame *data.Frame, facetResults []nrdb.NRDBResult, fieldName string, labels map[string]string) {
+	// First pass: collect all percentile keys across all results
+	percentileKeys := make(map[string]bool)
+	for _, result := range facetResults {
+		if result[fieldName] != nil {
+			if objVal, ok := result[fieldName].(map[string]interface{}); ok {
+				for key := range objVal {
+					percentileKeys[key] = true
+				}
+			}
+		}
+	}
+
+	// Create a field for each percentile (e.g., percentile.duration.95)
+	for percentileKey := range percentileKeys {
+		fieldNameWithPercentile := fmt.Sprintf("%s.%s", fieldName, percentileKey)
+
+		// Extract values for this specific percentile
+		values := make([]*float64, len(facetResults))
+		for i, result := range facetResults {
+			if result[fieldName] != nil {
+				if objVal, ok := result[fieldName].(map[string]interface{}); ok {
+					if percentileVal, exists := objVal[percentileKey]; exists {
+						if floatVal, ok := percentileVal.(float64); ok {
+							values[i] = &floatVal
+						} else if strVal, ok := percentileVal.(string); ok {
+							if parsed, err := parseNumericString(strVal); err == nil {
+								values[i] = &parsed
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Create field with all facet labels
+		field := data.NewField(fieldNameWithPercentile, labels, values)
+		frame.Fields = append(frame.Fields, field)
+	}
+}
+
+// addRegularAggregationFieldWithLabels handles regular aggregation fields with multiple facet labels
+func addRegularAggregationFieldWithLabels(frame *data.Frame, facetResults []nrdb.NRDBResult, fieldName string, labels map[string]string) {
+	// Extract values for this field
+	values := make([]*float64, len(facetResults))
+	for i, result := range facetResults {
+		if result[fieldName] != nil && result[fieldName] != "" {
+			if val, ok := result[fieldName].(float64); ok {
+				values[i] = &val
+			} else if strVal, ok := result[fieldName].(string); ok && strVal != "" {
+				if parsed, err := parseNumericString(strVal); err == nil {
+					values[i] = &parsed
+				}
+			} else if intVal, ok := result[fieldName].(int); ok {
+				floatVal := float64(intVal)
+				values[i] = &floatVal
+			} else if int64Val, ok := result[fieldName].(int64); ok {
+				floatVal := float64(int64Val)
+				values[i] = &floatVal
+			}
+		}
+	}
+
+	// Create field with all facet labels
+	field := data.NewField(fieldName, labels, values)
+	frame.Fields = append(frame.Fields, field)
+}
+
 // isFacetFieldName checks if a field name corresponds to a facet field name
 func isFacetFieldName(fieldName string, facetNames []string) bool {
 	for _, facetName := range facetNames {
@@ -574,7 +785,93 @@ func isFacetFieldName(fieldName string, facetNames []string) bool {
 	return false
 }
 
-// groupResultsByFacet groups results by facet value for aggregation queries
+// FacetGroupInfo holds results and labels for a facet group
+type FacetGroupInfo struct {
+	Results []nrdb.NRDBResult
+	Labels  map[string]string
+}
+
+// groupResultsByAllFacets groups results by ALL facet values (multi-dimensional)
+func groupResultsByAllFacets(results *nrdb.NRDBResultContainer, facetNames []string) map[string]*FacetGroupInfo {
+	grouped := make(map[string]*FacetGroupInfo)
+
+	for _, result := range results.Results {
+		// Extract all facet values
+		facetValues := extractAllFacetValues(result, facetNames)
+
+		if len(facetValues) == 0 {
+			continue
+		}
+
+		// Create a composite key from all facet values
+		facetKey := createCompositeFacetKey(facetValues, facetNames)
+
+		// Create labels map
+		labels := make(map[string]string)
+		for i, facetName := range facetNames {
+			if i < len(facetValues) {
+				labels[facetName] = facetValues[i]
+			}
+		}
+
+		// Group by composite key
+		if _, exists := grouped[facetKey]; !exists {
+			grouped[facetKey] = &FacetGroupInfo{
+				Results: []nrdb.NRDBResult{},
+				Labels:  labels,
+			}
+		}
+		grouped[facetKey].Results = append(grouped[facetKey].Results, result)
+	}
+
+	return grouped
+}
+
+// extractAllFacetValues extracts all facet values from a result
+func extractAllFacetValues(result map[string]interface{}, facetNames []string) []string {
+	var values []string
+
+	facetData, hasFacet := result[utils.FacetFieldName]
+	if !hasFacet {
+		return values
+	}
+
+	// Handle facet as array (multiple facets)
+	if facetArray, ok := facetData.([]interface{}); ok {
+		for _, value := range facetArray {
+			values = append(values, fmt.Sprintf("%v", value))
+		}
+	} else {
+		// Handle single facet value
+		values = append(values, fmt.Sprintf("%v", facetData))
+	}
+
+	return values
+}
+
+// createCompositeFacetKey creates a unique key from multiple facet values
+func createCompositeFacetKey(facetValues []string, facetNames []string) string {
+	if len(facetValues) == 0 {
+		return ""
+	}
+
+	// For single facet, return just the value
+	if len(facetValues) == 1 {
+		return facetValues[0]
+	}
+
+	// For multiple facets, create a descriptive key
+	var parts []string
+	for i, value := range facetValues {
+		if i < len(facetNames) {
+			// Use facet name for clarity: "Server Error, grafana-traffic-generator, host1"
+			parts = append(parts, value)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// groupResultsByFacet groups results by facet value for aggregation queries (legacy - single facet)
 func groupResultsByFacet(results *nrdb.NRDBResultContainer, facetName string) map[string][]nrdb.NRDBResult {
 	grouped := make(map[string][]nrdb.NRDBResult)
 
@@ -603,15 +900,31 @@ func hasCountField(results *nrdb.NRDBResultContainer) bool {
 	return hasCount
 }
 
-// extractFieldNames extracts unique field names from results
+// extractFieldNames extracts unique field names from results.
+// When an apdex.* object field is present, it filters out the duplicate top-level
+// fields (count, f, s, score, t) that NR returns redundantly alongside the nested object.
 func extractFieldNames(results *nrdb.NRDBResultContainer) []string {
 	fieldNamesMap := make(map[string]struct{})
+	hasApdexObject := false
+
 	for _, result := range results.Results {
 		for key := range result {
 			// Exclude timestamp fields and New Relic TIMESERIES fields from data fields
 			if key != utils.TimestampFieldName && key != "beginTimeSeconds" && key != "endTimeSeconds" {
 				fieldNamesMap[key] = struct{}{}
 			}
+			if strings.HasPrefix(key, "apdex.") {
+				hasApdexObject = true
+			}
+		}
+	}
+
+	// When apdex object is present, NR duplicates its sub-fields at top level.
+	// Remove the duplicates to avoid showing each value twice.
+	if hasApdexObject {
+		apdexDuplicates := []string{"count", "f", "s", "score", "t"}
+		for _, dup := range apdexDuplicates {
+			delete(fieldNamesMap, dup)
 		}
 	}
 
@@ -641,6 +954,30 @@ func createTimeField(results *nrdb.NRDBResultContainer, query backend.DataQuery)
 		}
 	}
 	return times
+}
+
+// calculateBucketIntervalMs calculates the timeseries bucket interval in milliseconds
+// from the first result that has both beginTimeSeconds and endTimeSeconds.
+// Returns 0 if no interval can be determined.
+func calculateBucketIntervalMs(results []nrdb.NRDBResult) float64 {
+	for _, result := range results {
+		beginTs, hasBegin := result["beginTimeSeconds"].(float64)
+		endTs, hasEnd := result["endTimeSeconds"].(float64)
+		if hasBegin && hasEnd && endTs > beginTs {
+			return (endTs - beginTs) * 1000 // Convert seconds to milliseconds
+		}
+	}
+	return 0
+}
+
+// setTimeFieldInterval sets the bucket interval on a time field's config if interval > 0
+func setTimeFieldInterval(timeField *data.Field, intervalMs float64) {
+	if intervalMs > 0 {
+		if timeField.Config == nil {
+			timeField.Config = &data.FieldConfig{}
+		}
+		timeField.Config.Interval = intervalMs
+	}
 }
 
 // parseNumericString attempts to parse a string as a float64, handling scientific notation
@@ -702,17 +1039,16 @@ func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNa
 				frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
 
 			case "array":
-				// Handle arrays (like histogram, uniques) - convert to JSON string for display
+				// Handle arrays (like histogram, uniques) - convert to comma-separated string
 				values := make([]string, len(results.Results))
 				for i, result := range results.Results {
 					if result[fieldName] != nil {
 						if arrayVal, ok := result[fieldName].([]interface{}); ok {
-							// Convert array to JSON string for better display
-							if jsonBytes, err := json.Marshal(arrayVal); err == nil {
-								values[i] = string(jsonBytes)
-							} else {
-								values[i] = fmt.Sprintf("%v", arrayVal)
+							parts := make([]string, len(arrayVal))
+							for j, elem := range arrayVal {
+								parts[j] = fmt.Sprintf("%v", elem)
 							}
+							values[i] = strings.Join(parts, ", ")
 						} else {
 							values[i] = fmt.Sprintf("%v", result[fieldName])
 						}
@@ -721,10 +1057,12 @@ func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNa
 				frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
 
 			case "object":
-				// Handle objects (like percentile results) - convert to JSON string or extract values
-				if strings.HasPrefix(fieldName, "percentile.") {
-					// Special handling for percentile objects - try to extract individual percentile values
-					handlePercentileField(frame, results, fieldName)
+				// Handle nested objects - flatten into individual fields for numeric sub-values
+				if strings.HasPrefix(fieldName, "percentile.") || strings.HasPrefix(fieldName, "apdex.") {
+					// Flatten percentile and apdex objects into individual fields
+					// e.g., percentile.duration → percentile.duration.50, percentile.duration.90
+					// e.g., apdex.duration → apdex.duration.score, apdex.duration.s, apdex.duration.t
+					handleNestedObjectField(frame, results, fieldName)
 				} else {
 					// General object handling - convert to JSON string
 					values := make([]string, len(results.Results))
@@ -770,9 +1108,12 @@ func addDataFields(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldNa
 	}
 }
 
-// handlePercentileField handles percentile objects by creating separate fields for each percentile
-func handlePercentileField(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldName string) {
-	// Collect all percentile keys from all results
+// handleNestedObjectField handles nested object fields (percentile, apdex, etc.)
+// by creating separate numeric fields for each sub-key.
+// e.g., "percentile.duration" with {"50": 0.01, "90": 0.08} → "percentile.duration.50", "percentile.duration.90"
+// e.g., "apdex.duration" with {"score": 0.99, "s": 530908} → "apdex.duration.score", "apdex.duration.s"
+func handleNestedObjectField(frame *data.Frame, results *nrdb.NRDBResultContainer, fieldName string) {
+	// Collect all sub-keys from all results
 	percentileKeys := make(map[string]bool)
 	for _, result := range results.Results {
 		if result[fieldName] != nil {
@@ -813,7 +1154,7 @@ func handlePercentileField(frame *data.Frame, results *nrdb.NRDBResultContainer,
 func formatFacetedTimeseriesQuery(results *nrdb.NRDBResultContainer, query backend.DataQuery) *backend.DataResponse {
 	// Get facet names
 	facetNames := extractFacetNames(results)
-	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted: %v", facetNames)
+	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted", "facetNames", facetNames)
 
 	if len(facetNames) == 0 {
 		// No facets, fall back to standard query
@@ -830,49 +1171,83 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 	resp := &backend.DataResponse{}
 
 	facetNames := extractFacetNamesMulti(results)
-	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted: %v", facetNames)
+	log.DefaultLogger.Debug("Faceted timeseries - Facet names extracted", "facetNames", facetNames)
 
 	if len(facetNames) == 0 {
 		return formatStandardQueryMulti(results, query)
 	}
 
-	facetData := groupTimeseriesByFacetMulti(results, facetNames[0])
-	log.DefaultLogger.Debug("Faceted timeseries - Grouped into %d facet groups", len(facetData))
+	// Use ALL facets, not just the first one
+	facetData := groupTimeseriesByAllFacetsMulti(results, facetNames)
+	log.DefaultLogger.Debug("Faceted timeseries - Grouped facet groups", "groupCount", len(facetData))
 
 	// Debug facet data
 	keys := make([]string, 0, len(facetData))
 	for k := range facetData {
 		keys = append(keys, k)
 	}
-	log.DefaultLogger.Debug("Facet data keys: %v", keys)
+	log.DefaultLogger.Debug("Facet data keys", "keys", keys)
 
-	for facetValue, facetResults := range facetData {
-		// Use just the facet value as the frame name to match test expectations
-		log.DefaultLogger.Debug("Creating frame with name: %s", facetValue)
-		frame := data.NewFrame(facetValue)
-		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetResults}, query)
-		frame.Fields = append(frame.Fields, data.NewField("time", nil, times))
+	// Extract aliases from metadata for proper metric naming
+	aliases := extractAliasesFromMetadataMulti(results)
+	log.DefaultLogger.Debug("Extracted aliases from metadata", "aliases", aliases, "count", len(aliases))
 
-		counts := make([]float64, len(facetResults))
-		for i, result := range facetResults {
-			if countValue, ok := result[utils.CountFieldName].(float64); ok {
-				counts[i] = countValue
+	for facetKey, facetInfo := range facetData {
+		// Use composite facet key as frame name
+		log.DefaultLogger.Debug("Creating frame with name", "name", facetKey)
+		frame := data.NewFrame(facetKey)
+		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetInfo.Results}, query)
+		timeField := data.NewField("time", nil, times)
+		setTimeFieldInterval(timeField, calculateBucketIntervalMs(facetInfo.Results))
+		frame.Fields = append(frame.Fields, timeField)
+
+		// Extract ALL metric fields from the results, not just "count"
+		// Use the aliases we extracted (which are the actual field names from results)
+		// This preserves the order and names as they appear in the query
+		metricFieldNames := aliases
+		if len(metricFieldNames) == 0 {
+			// Fallback: collect unique metric names from results
+			metricNamesSet := make(map[string]bool)
+			for _, result := range facetInfo.Results {
+				for key := range result {
+					// Skip non-metric fields
+					if key != "timestamp" && key != "beginTimeSeconds" && key != "endTimeSeconds" &&
+					   key != "facet" && key != "inspectedCount" {
+						metricNamesSet[key] = true
+					}
+				}
+			}
+			// Convert to slice
+			for name := range metricNamesSet {
+				metricFieldNames = append(metricFieldNames, name)
 			}
 		}
 
-		countField := data.NewField("count", map[string]string{
-			facetNames[0]: facetValue,
-		}, counts)
-		frame.Fields = append(frame.Fields, countField)
+		log.DefaultLogger.Debug("Processing metrics for facet", "facetKey", facetKey, "metricCount", len(metricFieldNames), "metrics", metricFieldNames)
+
+		// Create a field for each metric
+		for _, metricName := range metricFieldNames {
+			values := make([]*float64, len(facetInfo.Results))
+
+			for i, result := range facetInfo.Results {
+				if val, ok := result[metricName].(float64); ok {
+					values[i] = &val
+				}
+			}
+
+			// Use all facet labels, not just the first one
+			field := data.NewField(metricName, facetInfo.Labels, values)
+			frame.Fields = append(frame.Fields, field)
+		}
 
 		resp.Frames = append(resp.Frames, frame)
 	}
 
-	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response: %d", len(resp.Frames))
+	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response", "frameCount", len(resp.Frames))
 
 	// Log frame names for debugging
 	for i, frame := range resp.Frames {
-		log.DefaultLogger.Debug("Frame %d name: %s", i, frame.Name)
+		log.DefaultLogger.Debug("Frame name", "index", i, "name", frame.Name)
 	}
 
 	return resp
@@ -898,7 +1273,52 @@ func groupTimeseriesByFacet(results *nrdb.NRDBResultContainer, facetName string)
 	return grouped
 }
 
-// Multi version for NRDBResultContainerMultiResultCustomized
+// groupTimeseriesByAllFacetsMulti groups timeseries results by ALL facet values for Multi type
+func groupTimeseriesByAllFacetsMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, facetNames []string) map[string]*FacetGroupInfo {
+	grouped := make(map[string]*FacetGroupInfo)
+
+	// Process data from OtherResult first, as it's the preferred location for faceted timeseries
+	resultsToProcess := results.OtherResult
+	if len(resultsToProcess) == 0 {
+		// Fallback to Results if OtherResult is empty
+		resultsToProcess = results.Results
+	}
+
+	for _, result := range resultsToProcess {
+		// Extract all facet values
+		facetValues := extractAllFacetValues(result, facetNames)
+
+		if len(facetValues) == 0 {
+			continue
+		}
+
+		// Create a composite key from all facet values
+		facetKey := createCompositeFacetKey(facetValues, facetNames)
+
+		// Create labels map
+		labels := make(map[string]string)
+		for i, facetName := range facetNames {
+			if i < len(facetValues) {
+				labels[facetName] = facetValues[i]
+			}
+		}
+
+		log.DefaultLogger.Debug("Grouping by composite facet", "facetKey", facetKey, "labels", labels)
+
+		// Group by composite key
+		if _, exists := grouped[facetKey]; !exists {
+			grouped[facetKey] = &FacetGroupInfo{
+				Results: []nrdb.NRDBResult{},
+				Labels:  labels,
+			}
+		}
+		grouped[facetKey].Results = append(grouped[facetKey].Results, result)
+	}
+
+	return grouped
+}
+
+// Multi version for NRDBResultContainerMultiResultCustomized (legacy - single facet)
 func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCustomized, facetName string) map[string][]nrdb.NRDBResult {
 	grouped := make(map[string][]nrdb.NRDBResult)
 
@@ -914,13 +1334,13 @@ func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCus
 		if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok && len(facetArray) > 0 {
 			// Clean up the format for array facets, extracting just the first value
 			facetValue = fmt.Sprintf("%v", facetArray[0])
-			log.DefaultLogger.Debug("Found facet array, extracted value: %v", facetValue)
+			log.DefaultLogger.Debug("Found facet array, extracted value", "value", facetValue)
 		} else if result[utils.FacetFieldName] != nil {
 			facetValue = fmt.Sprintf("%v", result[utils.FacetFieldName])
-			log.DefaultLogger.Debug("Found direct facet value: %v", facetValue)
+			log.DefaultLogger.Debug("Found direct facet value", "value", facetValue)
 		}
 		if facetValue != "" {
-			log.DefaultLogger.Debug("Using facet value '%s' for grouping", facetValue)
+			log.DefaultLogger.Debug("Using facet value for grouping", "facetValue", facetValue)
 			grouped[facetValue] = append(grouped[facetValue], result)
 		}
 	}
@@ -930,9 +1350,8 @@ func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCus
 // FormatFacetedTimeseriesResults returns a Grafana DataResponse for faceted timeseries queries
 func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) *backend.DataResponse {
 
-	resultsJSON, _ := json.MarshalIndent(results, "", "  ")
-	log.DefaultLogger.Debug("FormatFacetedTimeseriesResults Result count: %d\nResults:\n%s",
-		len(results.Results), string(resultsJSON))
+	log.DefaultLogger.Debug("FormatFacetedTimeseriesResults",
+		"resultCount", len(results.Results))
 
 	if !isFacetedTimeseriesQueryMulti(results) {
 		resp := &backend.DataResponse{}
@@ -947,21 +1366,21 @@ func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResult
 	// First check Results as it's the preferred location for faceted timeseries
 	if len(results.Results) > 0 {
 		actualResults = results.Results
-		log.DefaultLogger.Debug("Using Results with %d entries", len(actualResults))
+		log.DefaultLogger.Debug("Using Results", "entryCount", len(actualResults))
 		// Debug facet values
 		for i, result := range actualResults {
 			if facetVal, ok := result["facet"]; ok {
-				log.DefaultLogger.Debug("Results[%d] facet: %v", i, facetVal)
+				log.DefaultLogger.Debug("Results facet", "index", i, "facet", facetVal)
 			}
 		}
 	} else {
 		// Fallback to OtherResult if Results is empty
 		actualResults = results.OtherResult
-		log.DefaultLogger.Debug("Using OtherResult with %d entries", len(actualResults))
+		log.DefaultLogger.Debug("Using OtherResult", "entryCount", len(actualResults))
 		// Debug facet values
 		for i, result := range actualResults {
 			if facetVal, ok := result["facet"]; ok {
-				log.DefaultLogger.Debug("OtherResult[%d] facet: %v", i, facetVal)
+				log.DefaultLogger.Debug("OtherResult facet", "index", i, "facet", facetVal)
 			}
 		}
 	}
@@ -987,81 +1406,56 @@ func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResult
 	return formatFacetedAggregationQuery(standardResults, query, facetNames)
 }
 
-// isAggregationField checks if a field name represents an aggregation function result
+// isAggregationField checks if a field name represents a metric/aggregation result.
+// Uses a blacklist approach: any field that isn't an internal/system field is considered
+// an aggregation field. This supports arbitrary user-defined aliases (e.g., 'Total', 'My Metric').
 func isAggregationField(fieldName string) bool {
-	// Basic aggregation prefixes
-	aggregationPrefixes := []string{
-		"average.", "sum.", "min.", "max.", "count", "uniqueCount.", "latest.", "earliest.",
-		"median.", "percentile.", "rate.", "apdex.", "histogram.", "uniques.",
-		"getField.", "round.", "percentage.", "stddev.", "variance.", "filter.",
+	// Exclude known internal/system fields that are never metrics
+	internalFields := map[string]bool{
+		"facet":            true,
+		"inspectedCount":   true,
+		"timestamp":        true,
+		"beginTimeSeconds": true,
+		"endTimeSeconds":   true,
 	}
 
-	// Check for exact matches (count is standalone)
-	exactMatches := []string{
-		"count",
+	if internalFields[fieldName] {
+		return false
 	}
 
-	// Common aliases and custom field names that are aggregations
-	aliasMatches := []string{
-		"Error Rate", "Success Rate", "Error %", "ErrorCount", "SuccessCount",
-		"Avg Duration", "Successes", "Errors", "f", "s", "t", "score", "duration",
-		"BucketMin", "BucketMax",
-	}
-
-	// Check exact matches first
-	for _, exact := range exactMatches {
-		if fieldName == exact {
-			return true
-		}
-	}
-
-	// Check alias matches
-	for _, alias := range aliasMatches {
-		if fieldName == alias {
-			return true
-		}
-	}
-
-	// Check prefixes
-	for _, prefix := range aggregationPrefixes {
-		if strings.HasPrefix(fieldName, prefix) {
-			return true
-		}
-	}
-
-	return false
+	// Any non-internal field is treated as a metric/aggregation field
+	return true
 }
 
-// detectFieldType analyzes a field across all results to determine the best data type
+// detectFieldType analyzes a field across all results to determine the best data type.
+// Uses field name prefixes for known NR types, then inspects actual values for all others.
 func detectFieldType(results []nrdb.NRDBResult, fieldName string) string {
-	// Check if it's an aggregation field first
-	if isAggregationField(fieldName) {
-		// Special handling for specific aggregation types
-		if strings.HasPrefix(fieldName, "histogram.") {
-			return "array" // histogram returns array of numbers
+	// Handle known NR field name patterns that have specific types
+	if strings.HasPrefix(fieldName, "histogram.") {
+		return "array"
+	}
+	if strings.HasPrefix(fieldName, "uniques.") {
+		return "array"
+	}
+	if strings.HasPrefix(fieldName, "percentile.") {
+		parts := strings.Split(fieldName, ".")
+		if len(parts) >= 3 {
+			return "number" // specific percentile like "percentile.duration.95"
 		}
-		if strings.HasPrefix(fieldName, "uniques.") {
-			return "array" // uniques returns array of strings/values
+		return "object" // generic percentile object like "percentile.duration"
+	}
+	if strings.HasPrefix(fieldName, "apdex.") {
+		parts := strings.Split(fieldName, ".")
+		if len(parts) >= 3 {
+			return "number" // specific apdex field like "apdex.duration.score"
 		}
-		if strings.HasPrefix(fieldName, "percentile.") {
-			// Check if it's a specific percentile (e.g., percentile.duration.95) vs generic percentile object
-			// If the field name has more than 2 dots after "percentile", it's likely a specific percentile value
-			parts := strings.Split(fieldName, ".")
-			if len(parts) >= 3 {
-				// This is a specific percentile like "percentile.duration.95" - treat as number
-				return "number"
-			}
-			// Generic percentile field - treat as object
-			return "object"
-		}
-		if strings.HasPrefix(fieldName, "earliest.timestamp") || strings.HasPrefix(fieldName, "latest.timestamp") {
-			return "timestamp" // timestamp fields
-		}
-		// Default for other aggregations is numeric
-		return "number"
+		return "object" // generic apdex object like "apdex.duration"
+	}
+	if strings.HasPrefix(fieldName, "earliest.timestamp") || strings.HasPrefix(fieldName, "latest.timestamp") {
+		return "timestamp"
 	}
 
-	// For non-aggregation fields, scan all results to determine type
+	// For all other fields, scan actual values to determine type
 	var foundTypes = make(map[string]bool)
 
 	for _, result := range results {
@@ -1115,7 +1509,14 @@ func formatStandardQueryMulti(results *nrdb.NRDBResultContainerMultiResultCustom
 
 	fieldNames := extractFieldNamesMulti(results)
 	times := createTimeFieldMulti(results, query)
-	frame.Fields = append(frame.Fields, data.NewField(utils.TimeFieldName, nil, times))
+	timeField := data.NewField(utils.TimeFieldName, nil, times)
+	// Convert multi-result Results to standard NRDBResult slice for interval calculation
+	standardResults := make([]nrdb.NRDBResult, len(results.Results))
+	for i, r := range results.Results {
+		standardResults[i] = r
+	}
+	setTimeFieldInterval(timeField, calculateBucketIntervalMs(standardResults))
+	frame.Fields = append(frame.Fields, timeField)
 	addDataFieldsMulti(frame, results, fieldNames)
 	resp.Frames = append(resp.Frames, frame)
 	return resp
@@ -1211,17 +1612,16 @@ func addDataFieldsMulti(frame *data.Frame, results *nrdb.NRDBResultContainerMult
 				frame.Fields = append(frame.Fields, data.NewField(fieldName, nil, values))
 
 			case "array":
-				// Handle arrays (like histogram, uniques) - convert to JSON string for display
+				// Handle arrays (like histogram, uniques) - convert to comma-separated string
 				values := make([]string, len(results.Results))
 				for i, result := range results.Results {
 					if result[fieldName] != nil {
 						if arrayVal, ok := result[fieldName].([]interface{}); ok {
-							// Convert array to JSON string for better display
-							if jsonBytes, err := json.Marshal(arrayVal); err == nil {
-								values[i] = string(jsonBytes)
-							} else {
-								values[i] = fmt.Sprintf("%v", arrayVal)
+							parts := make([]string, len(arrayVal))
+							for j, elem := range arrayVal {
+								parts[j] = fmt.Sprintf("%v", elem)
 							}
+							values[i] = strings.Join(parts, ", ")
 						} else {
 							values[i] = fmt.Sprintf("%v", result[fieldName])
 						}

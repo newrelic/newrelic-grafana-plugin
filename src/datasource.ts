@@ -1,5 +1,14 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
+import {
+  DataSourceInstanceSettings,
+  CoreApp,
+  ScopedVars,
+  MetricFindValue,
+  FieldType,
+  SupplementaryQueryType,
+  SupplementaryQueryOptions,
+} from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 
 import { NewRelicQuery, NewRelicDataSourceOptions } from './types';
 import { validateNrqlQuery } from './utils/validation';
@@ -33,6 +42,83 @@ export class DataSource extends DataSourceWithBackend<NewRelicQuery, NewRelicDat
       queryText: defaultQuery,
       refId: 'A',
     };
+  }
+
+  /**
+   * Executes a NRQL query and returns results for Grafana dashboard variables.
+   * Called by Grafana when a "Query" type variable runs its query.
+   */
+  async metricFindQuery(query: string, options?: any): Promise<MetricFindValue[]> {
+    if (!query || query.trim().length === 0) {
+      return [];
+    }
+
+    const request = {
+      targets: [
+        {
+          refId: 'variable',
+          queryText: query,
+          useGrafanaTime: false,
+        } as NewRelicQuery,
+      ],
+      range: options?.range,
+      requestId: 'variable-query',
+      interval: '1m',
+      intervalMs: 60000,
+      scopedVars: options?.scopedVars || {},
+      timezone: 'UTC',
+      app: 'dashboard',
+      startTime: Date.now(),
+    } as any;
+
+    try {
+      const response = await lastValueFrom(super.query(request));
+
+      if (!response?.data?.length) {
+        return [];
+      }
+
+      const values: MetricFindValue[] = [];
+
+      for (const frame of response.data) {
+        if (!frame.fields?.length) {
+          continue;
+        }
+
+        // Skip time/number fields — find string/data fields for variable values
+        for (const field of frame.fields) {
+          if (field.type === FieldType.time) {
+            continue;
+          }
+
+          const fieldValues = field.values?.toArray?.() ?? Array.from(field.values ?? []);
+
+          for (const val of fieldValues) {
+            if (val == null) {
+              continue;
+            }
+            const strVal = String(val);
+            // Expand comma-separated uniques() results
+            if (fieldValues.length === 1 && typeof val === 'string' && val.includes(', ')) {
+              const parts = val.split(', ').map((v: string) => v.trim()).filter(Boolean);
+              for (const part of parts) {
+                values.push({ text: part, value: part });
+              }
+            } else {
+              values.push({ text: strVal, value: strVal });
+            }
+          }
+
+          // Use the first non-time field only
+          break;
+        }
+      }
+
+      return values;
+    } catch (error) {
+      logger.error('Variable query failed', error as Error);
+      return [];
+    }
   }
 
   /**
@@ -106,6 +192,57 @@ export class DataSource extends DataSourceWithBackend<NewRelicQuery, NewRelicDat
       return false;
     }
   }
+
+  // ── Logs support ──────────────────────────────────────────────────
+
+  /** Regex matching "FROM Log" as a standalone event type (not "FROM LogMessage") */
+  private static LOG_QUERY_REGEX = /\bFROM\s+Log\b/i;
+
+  /**
+   * Checks if the NRQL query targets the Log event type.
+   */
+  private isLogQuery(query: string): boolean {
+    return DataSource.LOG_QUERY_REGEX.test(query);
+  }
+
+  /**
+   * Returns the supplementary query types this datasource supports.
+   * Enables the log volume histogram in Grafana Explore.
+   */
+  getSupportedSupplementaryQueryTypes(): SupplementaryQueryType[] {
+    return [SupplementaryQueryType.LogsVolume];
+  }
+
+  /**
+   * Generates a supplementary query for log volume histograms.
+   * Preserves WHERE filters from the original log query.
+   */
+  getSupplementaryQuery(
+    options: SupplementaryQueryOptions,
+    originalQuery: NewRelicQuery
+  ): NewRelicQuery | undefined {
+    if (options.type !== SupplementaryQueryType.LogsVolume) {
+      return undefined;
+    }
+
+    if (!originalQuery.queryText || !this.isLogQuery(originalQuery.queryText)) {
+      return undefined;
+    }
+
+    // Extract WHERE clause from the original query, preserving user's filters
+    const whereMatch = originalQuery.queryText.match(
+      /\bWHERE\b(.+?)(?=\s*\b(?:SINCE|UNTIL|LIMIT|TIMESERIES|FACET|ORDER\s+BY|COMPARE\s+WITH)\b|$)/i
+    );
+    const whereClause = whereMatch ? ` WHERE${whereMatch[1]}` : '';
+
+    return {
+      ...originalQuery,
+      refId: `${originalQuery.refId}-logs-volume`,
+      queryText: `SELECT count(*) FROM Log${whereClause} TIMESERIES`,
+    };
+  }
+
+  // ── Connection test ──────────────────────────────────────────────
 
   /**
    * Tests the data source connection

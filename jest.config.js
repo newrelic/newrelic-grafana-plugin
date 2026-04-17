@@ -3,10 +3,6 @@
 process.env.TZ = 'UTC';
 
 module.exports = {
-  moduleNameMapper: {
-    // Mock monaco-editor to avoid issues with Jest and Monaco Editor
-    'monaco-editor': '<rootDir>/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts',
-  },
   // Jest configuration provided by Grafana scaffolding
   ...require('./.config/jest.config'),
 };
