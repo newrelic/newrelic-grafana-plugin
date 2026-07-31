@@ -346,28 +346,6 @@ func TestNRQLExecutionError_QueryHandler(t *testing.T) {
 	})
 }
 
-func TestCheckFacetAndTimeseries_QueryHandler(t *testing.T) {
-	// Since checkFacetAndTimeseries only logs and doesn't return anything,
-	// we're just calling it to increase coverage
-	t.Run("query with FACET and TIMESERIES", func(t *testing.T) {
-		query := "SELECT count(*) FROM Transaction FACET appName TIMESERIES"
-		checkFacetAndTimeseries(query)
-		// No assertions since we're just executing for coverage
-	})
-
-	t.Run("query with FACET only", func(t *testing.T) {
-		query := "SELECT count(*) FROM Transaction FACET appName"
-		checkFacetAndTimeseries(query)
-		// No assertions since we're just executing for coverage
-	})
-
-	t.Run("query with neither FACET nor TIMESERIES", func(t *testing.T) {
-		query := "SELECT count(*) FROM Transaction"
-		checkFacetAndTimeseries(query)
-		// No assertions since we're just executing for coverage
-	})
-}
-
 func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 	t.Run("nil executor", func(t *testing.T) {
 		result, err := ExecuteNRQLQuery(context.Background(), nil, 123456, "SELECT count(*) FROM Transaction")

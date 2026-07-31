@@ -127,19 +127,10 @@ func injectTimeRange(nrqlQuery string, timeRange backend.TimeRange) string {
 	if fromMs > 0 && toMs > 0 {
 		injected := fmt.Sprintf("%s SINCE %d UNTIL %d", nrqlQuery, fromMs, toMs)
 		log.DefaultLogger.Debug("Injected Grafana time range into NRQL",
-			"from", timeRange.From, "to", timeRange.To, "query", injected)
+			"from", timeRange.From, "to", timeRange.To)
 		return injected
 	}
 	return nrqlQuery
-}
-
-// checkFacetAndTimeseries logs if both FACET and TIMESERIES are present in the query
-func checkFacetAndTimeseries(query string) {
-	hasFacet := strings.Contains(strings.ToUpper(query), "FACET")
-	hasTimeseries := strings.Contains(strings.ToUpper(query), "TIMESERIES")
-	if hasFacet && hasTimeseries {
-		log.DefaultLogger.Info("Query contains both FACET and TIMESERIES", "query", query)
-	}
 }
 
 // HandleQuery processes a single Grafana data query using our interface-based approach.

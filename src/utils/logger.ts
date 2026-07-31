@@ -33,17 +33,19 @@ function sanitizeLogMessage(message: string): string {
  * @param obj - The object to sanitize
  * @returns Sanitized object
  */
-function sanitizeObject(obj: any): any {
-  if (!obj || typeof obj !== 'object') {
+function sanitizeObject(obj: any, depth = 0): any {
+  if (!obj || typeof obj !== 'object' || depth > 5) {
     return obj;
   }
 
   const sensitiveFields = ['apiKey', 'api_key', 'password', 'token', 'secret'];
-  const sanitized = { ...obj };
+  const sanitized = Array.isArray(obj) ? [...obj] : { ...obj };
 
-  for (const field of sensitiveFields) {
-    if (field in sanitized) {
-      sanitized[field] = '[REDACTED]';
+  for (const key of Object.keys(sanitized)) {
+    if (sensitiveFields.includes(key.toLowerCase())) {
+      sanitized[key] = '[REDACTED]';
+    } else if (sanitized[key] && typeof sanitized[key] === 'object') {
+      sanitized[key] = sanitizeObject(sanitized[key], depth + 1);
     }
   }
 

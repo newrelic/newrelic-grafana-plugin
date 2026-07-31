@@ -603,8 +603,6 @@ func formatFacetedAggregationQuery(results *nrdb.NRDBResultContainer, query back
 
 	// Create separate frames for each facet combination
 	for facetKey, facetInfo := range facetData {
-		// Use facet key as the frame name
-		log.DefaultLogger.Debug("Creating frame with facet key", "facetKey", facetKey)
 		frame := data.NewFrame(facetKey)
 		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetInfo.Results}, query)
 		timeField := data.NewField("time", nil, times)
@@ -1193,8 +1191,6 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 	log.DefaultLogger.Debug("Extracted aliases from metadata", "aliases", aliases, "count", len(aliases))
 
 	for facetKey, facetInfo := range facetData {
-		// Use composite facet key as frame name
-		log.DefaultLogger.Debug("Creating frame with name", "name", facetKey)
 		frame := data.NewFrame(facetKey)
 		times := createTimeField(&nrdb.NRDBResultContainer{Results: facetInfo.Results}, query)
 		timeField := data.NewField("time", nil, times)
@@ -1223,8 +1219,6 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 			}
 		}
 
-		log.DefaultLogger.Debug("Processing metrics for facet", "facetKey", facetKey, "metricCount", len(metricFieldNames), "metrics", metricFieldNames)
-
 		// Create a field for each metric
 		for _, metricName := range metricFieldNames {
 			values := make([]*float64, len(facetInfo.Results))
@@ -1244,11 +1238,6 @@ func formatFacetedTimeseriesQueryMulti(results *nrdb.NRDBResultContainerMultiRes
 	}
 
 	log.DefaultLogger.Debug("Faceted timeseries - Total frames in response", "frameCount", len(resp.Frames))
-
-	// Log frame names for debugging
-	for i, frame := range resp.Frames {
-		log.DefaultLogger.Debug("Frame name", "index", i, "name", frame.Name)
-	}
 
 	return resp
 }
@@ -1303,8 +1292,6 @@ func groupTimeseriesByAllFacetsMulti(results *nrdb.NRDBResultContainerMultiResul
 			}
 		}
 
-		log.DefaultLogger.Debug("Grouping by composite facet", "facetKey", facetKey, "labels", labels)
-
 		// Group by composite key
 		if _, exists := grouped[facetKey]; !exists {
 			grouped[facetKey] = &FacetGroupInfo{
@@ -1332,15 +1319,11 @@ func groupTimeseriesByFacetMulti(results *nrdb.NRDBResultContainerMultiResultCus
 	for _, result := range resultsToProcess {
 		facetValue := ""
 		if facetArray, ok := result[utils.FacetFieldName].([]interface{}); ok && len(facetArray) > 0 {
-			// Clean up the format for array facets, extracting just the first value
 			facetValue = fmt.Sprintf("%v", facetArray[0])
-			log.DefaultLogger.Debug("Found facet array, extracted value", "value", facetValue)
 		} else if result[utils.FacetFieldName] != nil {
 			facetValue = fmt.Sprintf("%v", result[utils.FacetFieldName])
-			log.DefaultLogger.Debug("Found direct facet value", "value", facetValue)
 		}
 		if facetValue != "" {
-			log.DefaultLogger.Debug("Using facet value for grouping", "facetValue", facetValue)
 			grouped[facetValue] = append(grouped[facetValue], result)
 		}
 	}
@@ -1367,22 +1350,9 @@ func FormatFacetedTimeseriesResults(results *nrdb.NRDBResultContainerMultiResult
 	if len(results.Results) > 0 {
 		actualResults = results.Results
 		log.DefaultLogger.Debug("Using Results", "entryCount", len(actualResults))
-		// Debug facet values
-		for i, result := range actualResults {
-			if facetVal, ok := result["facet"]; ok {
-				log.DefaultLogger.Debug("Results facet", "index", i, "facet", facetVal)
-			}
-		}
 	} else {
-		// Fallback to OtherResult if Results is empty
 		actualResults = results.OtherResult
 		log.DefaultLogger.Debug("Using OtherResult", "entryCount", len(actualResults))
-		// Debug facet values
-		for i, result := range actualResults {
-			if facetVal, ok := result["facet"]; ok {
-				log.DefaultLogger.Debug("OtherResult facet", "index", i, "facet", facetVal)
-			}
-		}
 	}
 
 	standardResults := &nrdb.NRDBResultContainer{

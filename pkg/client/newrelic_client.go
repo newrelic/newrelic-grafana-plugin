@@ -87,13 +87,10 @@ func NewClient(config ClientConfig) (*newrelic.NewRelic, error) {
 
 	// Create the client directly using the variable function to allow for testing
 	nrClient, err := NewrelicNewFunc(cfgOpts...)
-	// print nrClient to debug
-	if nrClient != nil {
-		log.DefaultLogger.Debug("NewRelicClient: New Relic client initialized successfully", "client", nrClient)
-	}
 	if err != nil {
 		return nil, &NewRelicClientError{Msg: "failed to initialize New Relic client", Err: err}
 	}
+	log.DefaultLogger.Debug("NewRelicClient: New Relic client initialized successfully")
 
 	return nrClient, nil
 }
