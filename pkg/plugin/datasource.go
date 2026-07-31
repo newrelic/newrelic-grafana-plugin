@@ -83,6 +83,9 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	clientConfig := client.DefaultConfig()
 	clientConfig.APIKey = config.Secrets.ApiKey
 	clientConfig.DatasourceUID = datasourceUID // Set the datasource UID for unique service name
+	if config.Region != "" {
+		clientConfig.Region = config.Region
+	}
 
 	// Create New Relic client using the new method
 	nrClient, err := client.NewClient(clientConfig)

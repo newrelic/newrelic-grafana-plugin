@@ -350,6 +350,42 @@ func TestPerformHealthCheck1_NewClientError(t *testing.T) {
 	assert.Contains(t, result.Message, "simulated client creation error")
 }
 
+// TestPerformHealthCheck1_EURegionPassedToClient verifies that an EU region in JSONData
+// is deserialized and forwarded to checkHealthFunction via PluginSettings.
+func TestPerformHealthCheck1_EURegionPassedToClient(t *testing.T) {
+	originalCheckHealthFunc := checkHealthFunction
+	defer func() { checkHealthFunction = originalCheckHealthFunc }()
+
+	originalNewFunc := client.NewrelicNewFunc
+	defer func() { client.NewrelicNewFunc = originalNewFunc }()
+
+	client.NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+		return &newrelic.NewRelic{}, nil
+	}
+
+	var capturedRegion string
+	checkHealthFunction = func(ctx context.Context, settings *models.PluginSettings, executor nrdbiface.NRDBQueryExecutor) (*backend.CheckHealthResult, error) {
+		capturedRegion = settings.Region
+		return &backend.CheckHealthResult{Status: backend.HealthStatusOk, Message: "ok"}, nil
+	}
+
+	settings := backend.DataSourceInstanceSettings{
+		ID:   1,
+		Name: "test-eu-datasource",
+		DecryptedSecureJSONData: map[string]string{
+			"apiKey":    "test-api-key",
+			"accountID": "123456",
+		},
+		JSONData: []byte(`{"region": "EU"}`),
+	}
+
+	result, err := PerformHealthCheck1(context.Background(), settings)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, backend.HealthStatusOk, result.Status)
+	assert.Equal(t, "EU", capturedRegion, "expected EU region to be deserialized from JSONData")
+}
+
 // TestPerformHealthCheck1_WithUID tests health check with datasource UID
 func TestPerformHealthCheck1_WithUID(t *testing.T) {
 	// Save original client creation function

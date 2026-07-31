@@ -52,6 +52,9 @@ func PerformHealthCheck1(ctx context.Context, dsSettings backend.DataSourceInsta
 	clientConfig := client.DefaultConfig()
 	clientConfig.APIKey = config.Secrets.ApiKey
 	clientConfig.DatasourceUID = dsSettings.UID // Set the datasource UID for unique service name
+	if config.Region != "" {
+		clientConfig.Region = config.Region
+	}
 	log.DefaultLogger.Debug("health.ExecuteHealthCheck: Creating client with UID", "uid", dsSettings.UID)
 	nrClient, err := client.NewClient(clientConfig)
 	if err != nil {

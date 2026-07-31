@@ -42,6 +42,66 @@ func TestLoadPluginSettings_Success(t *testing.T) {
 	}
 }
 
+func TestLoadPluginSettings_EURegion(t *testing.T) {
+	jsonData := `{"path": "/some/path", "region": "EU"}`
+	secureData := map[string]string{
+		"apiKey":    "test_api_key",
+		"accountID": "12345",
+	}
+
+	settings := backend.DataSourceInstanceSettings{
+		JSONData:                []byte(jsonData),
+		DecryptedSecureJSONData: secureData,
+	}
+
+	pluginSettings, err := LoadPluginSettings(settings)
+	if err != nil {
+		t.Fatalf("LoadPluginSettings failed with error: %v", err)
+	}
+
+	assert.Equal(t, "EU", pluginSettings.Region)
+}
+
+func TestLoadPluginSettings_USRegion(t *testing.T) {
+	jsonData := `{"path": "/some/path", "region": "US"}`
+	secureData := map[string]string{
+		"apiKey":    "test_api_key",
+		"accountID": "12345",
+	}
+
+	settings := backend.DataSourceInstanceSettings{
+		JSONData:                []byte(jsonData),
+		DecryptedSecureJSONData: secureData,
+	}
+
+	pluginSettings, err := LoadPluginSettings(settings)
+	if err != nil {
+		t.Fatalf("LoadPluginSettings failed with error: %v", err)
+	}
+
+	assert.Equal(t, "US", pluginSettings.Region)
+}
+
+func TestLoadPluginSettings_NoRegionDefaultsEmpty(t *testing.T) {
+	jsonData := `{"path": "/some/path"}`
+	secureData := map[string]string{
+		"apiKey":    "test_api_key",
+		"accountID": "12345",
+	}
+
+	settings := backend.DataSourceInstanceSettings{
+		JSONData:                []byte(jsonData),
+		DecryptedSecureJSONData: secureData,
+	}
+
+	pluginSettings, err := LoadPluginSettings(settings)
+	if err != nil {
+		t.Fatalf("LoadPluginSettings failed with error: %v", err)
+	}
+
+	assert.Equal(t, "", pluginSettings.Region)
+}
+
 func TestLoadPluginSettings_InvalidJSON(t *testing.T) {
 	jsonData := `invalid json`
 	secureData := map[string]string{
