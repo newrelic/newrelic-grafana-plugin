@@ -12,8 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	nrconfig "github.com/newrelic/newrelic-client-go/v2/pkg/config"
+
+	"newrelic-grafana-plugin/pkg/client"
 	"newrelic-grafana-plugin/pkg/health"
 	"newrelic-grafana-plugin/pkg/models"
+
+	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 )
 
 // TestNewDatasource ensures that a new Datasource instance can be created.
@@ -771,4 +776,42 @@ func TestDatasource_QueryData_WithUID(t *testing.T) {
 
 	// Key verification: the UID was present in the request
 	assert.Equal(t, testUID, req.PluginContext.DataSourceInstanceSettings.UID)
+}
+
+// TestQueryData_EURegionPassedToClient verifies that an EU region in JSONData
+// is deserialized and forwarded to the New Relic client in the query path.
+func TestQueryData_EURegionPassedToClient(t *testing.T) {
+	originalLoadPluginSettings := models.LoadPluginSettings
+	defer func() { models.LoadPluginSettings = originalLoadPluginSettings }()
+
+	originalNewFunc := client.NewrelicNewFunc
+	defer func() { client.NewrelicNewFunc = originalNewFunc }()
+
+	var capturedRegion string
+	client.NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+		cfg := nrconfig.New()
+		for _, opt := range opts {
+			_ = opt(&cfg)
+		}
+		capturedRegion = cfg.Region().String()
+		return nil, fmt.Errorf("intercepted for region capture")
+	}
+
+	ds := &Datasource{}
+	_, _ = ds.QueryData(context.Background(), &backend.QueryDataRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData: []byte(`{"region": "EU"}`),
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey":    "test-api-key",
+					"accountID": "123456",
+				},
+			},
+		},
+		Queries: []backend.DataQuery{
+			{RefID: "A", JSON: []byte(`{"queryText":"SELECT count(*) FROM Transaction","accountID":123456}`)},
+		},
+	})
+
+	assert.Equal(t, "EU", capturedRegion, "expected EU region to be forwarded to New Relic client in query path")
 }

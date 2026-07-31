@@ -36,6 +36,7 @@ func (e *PluginSettingsError) Unwrap() error {
 // PluginSettings holds the configuration settings for the New Relic data source.
 type PluginSettings struct {
 	Path    string                `json:"path"`
+	Region  string                `json:"region"`
 	Secrets *SecretPluginSettings `json:"-"`
 }
 
