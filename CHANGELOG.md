@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-22
+
+### Added
+- Per-panel NRQL query timeout override (5-120s), addressing queries that hit NerdGraph's implicit ~5s default during high-traffic events. Out-of-range values are clamped rather than rejected.
+
+### Changed
+- Bumped `newrelic-client-go` to v2.94.1.
+- Bumped `glob`, `webpack`, `browserslist`, `js-yaml`, and `qs` to close several open high-severity CVEs.
+
+## [0.2.1] - 2026-07-31
+
+### Fixed
+- EU region accounts receiving a `403 not authorized for account region` error. The region selected in the datasource configuration is now correctly propagated to the New Relic API client.
+
+## [0.2.0] - 2026-04-17
+
+### Added
+- Query New Relic logs directly in Grafana, with color-coded severity, drill-down details, and a volume histogram in Explore.
+- Smart NRQL autocomplete with 190+ context-aware suggestions across dashboards, Explore, and template variables.
+- Editor theme now automatically matches Grafana's light/dark mode.
+- Logs and alerting capabilities declared for full Grafana panel compatibility.
+
+### Fixed
+- Period-over-period comparisons, multi-dimensional facets, and complex query results now render correctly.
+
 ## [0.1.0] - 2025-06-23
 
 ### Added
