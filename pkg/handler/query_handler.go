@@ -92,9 +92,32 @@ func NormalizeQuery(query string) string {
 	return strings.TrimSpace(query)
 }
 
+// minQueryTimeoutSeconds and maxQueryTimeoutSeconds are New Relic's allowed range for
+// a NRQL query timeout override.
+const (
+	minQueryTimeoutSeconds = 5
+	maxQueryTimeoutSeconds = 120
+)
+
+// clampQueryTimeout clamps a non-zero timeout override into New Relic's allowed
+// [5, 120] range. 0 (unset) is returned unchanged, since it means "no override".
+func clampQueryTimeout(timeoutSeconds int) int {
+	if timeoutSeconds == 0 {
+		return 0
+	}
+	if timeoutSeconds < minQueryTimeoutSeconds {
+		return minQueryTimeoutSeconds
+	}
+	if timeoutSeconds > maxQueryTimeoutSeconds {
+		return maxQueryTimeoutSeconds
+	}
+	return timeoutSeconds
+}
+
 // ExecuteNRQLQuery takes an NRDB query executor, account ID, and NRQL query string,
-// executes the query, and returns the results.
-func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, accountID int, nrqlQueryText string) (interface{}, error) {
+// executes the query, and returns the results. timeoutSeconds is an optional per-query
+// timeout override (0 means unset).
+func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, accountID int, nrqlQueryText string, timeoutSeconds int) (interface{}, error) {
 	if executor == nil {
 		return nil, &NRQLExecutionError{Query: nrqlQueryText, Msg: "NRDB query executor is nil, cannot execute query"}
 	}
@@ -107,9 +130,9 @@ func ExecuteNRQLQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor,
 
 	nrql := nrdb.NRQL(nrqlQueryText)
 	if shouldUseEnhancedQuery(nrqlQueryText) {
-		return executor.PerformNRQLQueryWithContext(ctx, accountID, nrql)
+		return executor.PerformNRQLQueryWithContext(ctx, accountID, nrql, timeoutSeconds)
 	}
-	return executor.QueryWithContext(ctx, accountID, nrql)
+	return executor.QueryWithContext(ctx, accountID, nrql, timeoutSeconds)
 }
 
 // injectTimeRange appends SINCE/UNTIL to the NRQL query using Grafana's time range
@@ -165,7 +188,12 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		accountID = qm.AccountID
 	}
 
-	results, err := ExecuteNRQLQuery(ctx, executor, accountID, nrqlQueryText)
+	timeoutSeconds := clampQueryTimeout(qm.TimeoutSeconds)
+	if timeoutSeconds != qm.TimeoutSeconds {
+		log.DefaultLogger.Debug("Clamped query timeout override", "refId", query.RefID, "requested", qm.TimeoutSeconds, "applied", timeoutSeconds)
+	}
+
+	results, err := ExecuteNRQLQuery(ctx, executor, accountID, nrqlQueryText, timeoutSeconds)
 	if err != nil {
 		resp.Error = fmt.Errorf("NRQL query execution failed: %w", err)
 		log.DefaultLogger.Error("NRQL query execution failed", "refId", query.RefID, "error", err)

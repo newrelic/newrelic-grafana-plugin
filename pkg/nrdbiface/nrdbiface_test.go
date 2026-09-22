@@ -2,11 +2,17 @@ package nrdbiface
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestNRDBExecutor is a simple implementation of NRDBQueryExecutor for testing
@@ -17,14 +23,14 @@ type TestNRDBExecutor struct {
 	Error            error
 }
 
-func (e *TestNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
+func (e *TestNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
 	if e.ShouldError {
 		return nil, e.Error
 	}
 	return e.QueryResult, nil
 }
 
-func (e *TestNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+func (e *TestNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
 	if e.ShouldError {
 		return nil, e.Error
 	}
@@ -46,13 +52,13 @@ func TestNRDBQueryExecutorInterface(t *testing.T) {
 	}
 
 	// Test standard query
-	result, err := testExecutor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction")
+	result, err := testExecutor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, float64(42), result.Results[0]["count"])
 
 	// Test multi-result query
-	multiResult, err := testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction")
+	multiResult, err := testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
 	assert.NoError(t, err)
 	assert.NotNil(t, multiResult)
 	assert.Equal(t, float64(42), multiResult.Results[0]["count"])
@@ -61,11 +67,11 @@ func TestNRDBQueryExecutorInterface(t *testing.T) {
 	testExecutor.ShouldError = true
 	testExecutor.Error = errors.New("test error")
 
-	result, err = testExecutor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction")
+	result, err = testExecutor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 
-	multiResult, err = testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction")
+	multiResult, err = testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
 	assert.Error(t, err)
 	assert.Nil(t, multiResult)
 }
@@ -108,7 +114,7 @@ func TestRealNRDBExecutor_QueryWithContext(t *testing.T) {
 			}
 
 			// Test the query method
-			result, err := testExecutor.QueryWithContext(context.Background(), 12345, nrdb.NRQL("SELECT count(*) FROM Transaction"))
+			result, err := testExecutor.QueryWithContext(context.Background(), 12345, nrdb.NRQL("SELECT count(*) FROM Transaction"), 0)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -157,7 +163,7 @@ func TestRealNRDBExecutor_PerformNRQLQueryWithContext(t *testing.T) {
 			}
 
 			// Test the multi-query method
-			result, err := testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, nrdb.NRQL("SELECT count(*) FROM Transaction"))
+			result, err := testExecutor.PerformNRQLQueryWithContext(context.Background(), 12345, nrdb.NRQL("SELECT count(*) FROM Transaction"), 0)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -169,4 +175,130 @@ func TestRealNRDBExecutor_PerformNRQLQueryWithContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newTestRealExecutor stands up a fake NerdGraph server that records the last
+// request body it received and always returns respJSON, then builds a real
+// RealNRDBExecutor pointed at it. This exercises the actual HTTP request our
+// client builds, rather than a mocked Go interface.
+func newTestRealExecutor(t *testing.T, respJSON string) (*RealNRDBExecutor, *capturedRequest) {
+	t.Helper()
+
+	captured := &capturedRequest{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		captured.body = body
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respJSON))
+	}))
+	t.Cleanup(server.Close)
+
+	nrClient, err := newrelic.New(
+		newrelic.ConfigPersonalAPIKey("test-key"),
+		newrelic.ConfigNerdGraphBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+
+	return &RealNRDBExecutor{NRDB: nrClient.Nrdb, NerdGraph: nrClient.NerdGraph}, captured
+}
+
+type capturedRequest struct {
+	body []byte
+}
+
+// variables unmarshals the GraphQL variables map from the captured request body.
+func (c *capturedRequest) variables(t *testing.T) map[string]interface{} {
+	t.Helper()
+	var req struct {
+		Variables map[string]interface{} `json:"variables"`
+	}
+	require.NoError(t, json.Unmarshal(c.body, &req))
+	return req.Variables
+}
+
+const standardQueryResponseJSON = `{"data":{"actor":{"account":{"nrql":{"results":[{"count":42}]}}}}}`
+
+func TestRealNRDBExecutor_QueryWithContext_NoTimeoutOverride(t *testing.T) {
+	executor, captured := newTestRealExecutor(t, standardQueryResponseJSON)
+
+	result, err := executor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Regression guard: with no override, the request must carry no "timeout"
+	// variable at all — identical to today's behavior.
+	_, hasTimeout := captured.variables(t)["timeout"]
+	assert.False(t, hasTimeout, "unset timeout must not appear in the outgoing request")
+}
+
+func TestRealNRDBExecutor_QueryWithContext_WithTimeoutOverride(t *testing.T) {
+	executor, captured := newTestRealExecutor(t, standardQueryResponseJSON)
+
+	result, err := executor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 30)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	vars := captured.variables(t)
+	assert.Equal(t, float64(30), vars["timeout"], "the requested timeout must be sent on the wire")
+}
+
+const enhancedQueryResponseJSON = `{"data":{"actor":{"account":{"nrql":{"results":[{"count":42}]}}}}}`
+
+func TestRealNRDBExecutor_PerformNRQLQueryWithContext_NoTimeoutOverride(t *testing.T) {
+	executor, captured := newTestRealExecutor(t, enhancedQueryResponseJSON)
+
+	result, err := executor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction FACET appName TIMESERIES", 0)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Regression guards for the unset case: no timeout variable, and no
+	// rawResponse field in the query document (byte-identical to today).
+	_, hasTimeout := captured.variables(t)["timeout"]
+	assert.False(t, hasTimeout)
+	assert.NotContains(t, string(captured.body), "rawResponse")
+}
+
+func TestRealNRDBExecutor_PerformNRQLQueryWithContext_WithTimeoutOverride(t *testing.T) {
+	executor, captured := newTestRealExecutor(t, enhancedQueryResponseJSON)
+
+	result, err := executor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction FACET appName TIMESERIES", 90)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	vars := captured.variables(t)
+	assert.Equal(t, float64(90), vars["timeout"], "the requested timeout must be sent on the wire")
+
+	// The direct regression-guard test: the hand-built document must never
+	// request rawResponse, or FACET+TIMESERIES panels would silently switch
+	// rendering paths in query_handler.go.
+	assert.NotContains(t, string(captured.body), "rawResponse")
+}
+
+// TestRealNRDBExecutor_PerformNRQLQueryWithContext_PassesCtxThrough verifies that
+// the no-override path calls the context-preserving client method (the bug fix)
+// rather than the old ctx-dropping PerformNRQLQuery. It does NOT assert that a
+// canceled/expired ctx aborts the in-flight HTTP call — verified empirically against
+// this vendored client version, an expired context does not abort a request already
+// in flight, so ctx cancellation here is forwarded correctly but is not a reliable
+// circuit breaker. The GraphQL timeout argument remains the only mechanism that
+// reliably bounds how long a query actually runs.
+func TestRealNRDBExecutor_PerformNRQLQueryWithContext_PassesCtxThrough(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(enhancedQueryResponseJSON))
+	}))
+	defer server.Close()
+
+	nrClient, err := newrelic.New(
+		newrelic.ConfigPersonalAPIKey("test-key"),
+		newrelic.ConfigNerdGraphBaseURL(server.URL),
+	)
+	require.NoError(t, err)
+	executor := &RealNRDBExecutor{NRDB: nrClient.Nrdb, NerdGraph: nrClient.NerdGraph}
+
+	result, err := executor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction FACET appName TIMESERIES", 0)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 }

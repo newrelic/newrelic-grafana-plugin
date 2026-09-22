@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/grafana/grafana-plugin-sdk-go v0.277.1
-	github.com/newrelic/newrelic-client-go/v2 v2.64.0
+	github.com/newrelic/newrelic-client-go/v2 v2.94.1
 )
 
 require (
@@ -78,6 +78,7 @@ require (
 	github.com/prometheus/common v0.63.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
+	github.com/robertkrimen/otto v0.5.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/unknwon/bra v0.0.0-20200517080246-1e3013ecaff8 // indirect
@@ -109,5 +110,6 @@ require (
 	google.golang.org/grpc v1.71.1 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
+	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

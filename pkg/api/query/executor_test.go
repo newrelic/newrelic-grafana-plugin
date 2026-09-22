@@ -16,14 +16,14 @@ type MockNRDBExecutor struct {
 	err        error
 }
 
-func (m *MockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
+func (m *MockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
 	if m.shouldFail {
 		return nil, m.err
 	}
 	return m.results, nil
 }
 
-func (m *MockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+func (m *MockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
 	if m.shouldFail {
 		return nil, m.err
 	}

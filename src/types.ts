@@ -10,6 +10,11 @@ export interface NewRelicQuery extends DataQuery {
   accountID?: number;
   /** Whether to use Grafana's time picker for automatic time range integration */
   useGrafanaTime?: boolean;
+  /**
+   * Optional per-query NRQL timeout override, in seconds (5-120). Unset means
+   * no override — New Relic's own default timeout applies.
+   */
+  timeoutSeconds?: number;
 }
 
 /**

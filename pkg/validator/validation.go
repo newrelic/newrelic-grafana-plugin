@@ -58,7 +58,7 @@ func CheckHealth(ctx context.Context, settings *models.PluginSettings, executor 
 	// and account-level permissions similar to "SELECT 1 FROM dual" in Oracle
 	testQuery := "SELECT count(*) FROM Transaction SINCE 1 hour ago LIMIT 1"
 
-	result, err := executor.QueryWithContext(ctx, settings.Secrets.AccountId, nrdb.NRQL(testQuery))
+	result, err := executor.QueryWithContext(ctx, settings.Secrets.AccountId, nrdb.NRQL(testQuery), 0)
 	if err != nil {
 		switch err.(type) {
 		case *errors.UnauthorizedError:

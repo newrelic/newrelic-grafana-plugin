@@ -95,7 +95,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	}
 
 	// Create the executor wrapper for the real client
-	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb}
+	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb, NerdGraph: nrClient.NerdGraph}
 
 	// Process queries concurrently using a worker pool
 	queryResults := make(chan struct {

@@ -20,9 +20,14 @@ import (
 type mockNRDBExecutor struct {
 	queryErr error
 	results  *nrdb.NRDBResultContainer
+
+	// lastTimeoutSeconds records the timeoutSeconds seen by the most recent call,
+	// so tests can assert what was actually passed through.
+	lastTimeoutSeconds int
 }
 
-func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
+func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
+	m.lastTimeoutSeconds = timeoutSeconds
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -39,7 +44,8 @@ func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, 
 	return m.results, nil
 }
 
-func (m *mockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+func (m *mockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+	m.lastTimeoutSeconds = timeoutSeconds
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -177,7 +183,7 @@ func TestExecuteNRQLQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := ExecuteNRQLQuery(context.Background(), tt.executor, tt.accountID, NormalizeQuery(tt.query))
+			results, err := ExecuteNRQLQuery(context.Background(), tt.executor, tt.accountID, NormalizeQuery(tt.query), 0)
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errMessage != "" {
@@ -194,12 +200,13 @@ func TestExecuteNRQLQuery(t *testing.T) {
 
 func TestHandleQuery_QueryHandler(t *testing.T) {
 	tests := []struct {
-		name       string
-		queryJSON  string
-		config     *models.PluginSettings
-		executor   *mockNRDBExecutor
-		wantErr    bool
-		errMessage string
+		name            string
+		queryJSON       string
+		config          *models.PluginSettings
+		executor        *mockNRDBExecutor
+		wantErr         bool
+		errMessage      string
+		wantTimeoutSecs int
 	}{
 		{
 			name: "successful query with default account ID",
@@ -291,6 +298,80 @@ func TestHandleQuery_QueryHandler(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "timeout unset defaults to no override",
+			queryJSON: `{
+				"queryText": "SELECT count(*) FROM Transaction"
+			}`,
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					AccountId: 123456,
+				},
+			},
+			executor:        &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}},
+			wantErr:         false,
+			wantTimeoutSecs: 0,
+		},
+		{
+			name: "valid timeout override on standard query path",
+			queryJSON: `{
+				"queryText": "SELECT count(*) FROM Transaction",
+				"timeoutSeconds": 30
+			}`,
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					AccountId: 123456,
+				},
+			},
+			executor:        &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}},
+			wantErr:         false,
+			wantTimeoutSecs: 30,
+		},
+		{
+			name: "valid timeout override on FACET+TIMESERIES query path",
+			queryJSON: `{
+				"queryText": "SELECT count(*) FROM Transaction FACET appName TIMESERIES",
+				"timeoutSeconds": 90
+			}`,
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					AccountId: 123456,
+				},
+			},
+			executor:        &mockNRDBExecutor{},
+			wantErr:         false,
+			wantTimeoutSecs: 90,
+		},
+		{
+			name: "timeout override above 120 is clamped down",
+			queryJSON: `{
+				"queryText": "SELECT count(*) FROM Transaction",
+				"timeoutSeconds": 200
+			}`,
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					AccountId: 123456,
+				},
+			},
+			executor:        &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}},
+			wantErr:         false,
+			wantTimeoutSecs: 120,
+		},
+		{
+			name: "timeout override below 5 is clamped up",
+			queryJSON: `{
+				"queryText": "SELECT count(*) FROM Transaction",
+				"timeoutSeconds": 2
+			}`,
+			config: &models.PluginSettings{
+				Secrets: &models.SecretPluginSettings{
+					AccountId: 123456,
+				},
+			},
+			executor:        &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}},
+			wantErr:         false,
+			wantTimeoutSecs: 5,
+		},
 	}
 
 	for _, tt := range tests {
@@ -308,6 +389,7 @@ func TestHandleQuery_QueryHandler(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, resp.Error)
+				assert.Equal(t, tt.wantTimeoutSecs, tt.executor.lastTimeoutSeconds)
 			}
 		})
 	}
@@ -348,7 +430,7 @@ func TestNRQLExecutionError_QueryHandler(t *testing.T) {
 
 func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 	t.Run("nil executor", func(t *testing.T) {
-		result, err := ExecuteNRQLQuery(context.Background(), nil, 123456, "SELECT count(*) FROM Transaction")
+		result, err := ExecuteNRQLQuery(context.Background(), nil, 123456, "SELECT count(*) FROM Transaction", 0)
 		assert.Nil(t, result)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "executor is nil")
@@ -356,7 +438,7 @@ func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 
 	t.Run("empty query text", func(t *testing.T) {
 		mockExecutor := &mockNRDBExecutor{}
-		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "")
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "", 0)
 		assert.Nil(t, result)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot be empty")
@@ -364,7 +446,7 @@ func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 
 	t.Run("zero account ID", func(t *testing.T) {
 		mockExecutor := &mockNRDBExecutor{}
-		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 0, "SELECT count(*) FROM Transaction")
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 0, "SELECT count(*) FROM Transaction", 0)
 		assert.Nil(t, result)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "account ID cannot be 0")
@@ -378,7 +460,7 @@ func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 			results: expectedResults,
 		}
 
-		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction")
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction", 0)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedResults, result)
 	})
@@ -388,7 +470,7 @@ func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 		mockExecutor := &mockNRDBExecutor{}
 
 		// The mockNRDBExecutor.PerformNRQLQueryWithContext method will handle this query
-		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction FACET name TIMESERIES")
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction FACET name TIMESERIES", 0)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 	})
@@ -399,10 +481,28 @@ func TestExecuteNRQLQueryEdgeCases_QueryHandler(t *testing.T) {
 			queryErr: expectedError,
 		}
 
-		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction")
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction", 0)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), expectedError.Error())
+	})
+
+	t.Run("standard query execution with timeout override", func(t *testing.T) {
+		mockExecutor := &mockNRDBExecutor{results: &nrdb.NRDBResultContainer{}}
+
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction", 30)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, 30, mockExecutor.lastTimeoutSeconds)
+	})
+
+	t.Run("enhanced query execution with timeout override", func(t *testing.T) {
+		mockExecutor := &mockNRDBExecutor{}
+
+		result, err := ExecuteNRQLQuery(context.Background(), mockExecutor, 123456, "SELECT count(*) FROM Transaction FACET name TIMESERIES", 90)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, 90, mockExecutor.lastTimeoutSeconds)
 	})
 }
 

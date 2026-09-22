@@ -6,4 +6,5 @@ type QueryModel struct {
 	QueryText      string `json:"queryText"`
 	UseGrafanaTime bool   `json:"useGrafanaTime"` // Whether to use Grafana's time picker
 	AccountID      int    `json:"accountID"`      // Optional, overrides the default account ID from settings
+	TimeoutSeconds int    `json:"timeoutSeconds"` // Optional per-query timeout override in seconds; 0 means unset
 }
