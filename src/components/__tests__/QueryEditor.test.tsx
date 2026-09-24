@@ -185,6 +185,36 @@ describe('QueryEditor', () => {
       expect(screen.getByTestId('query-timeout-override-input')).toBeInTheDocument();
     });
 
+    it('renders the Override Timeout label with an empty field', async () => {
+      await setup();
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+
+      expect(screen.getByText('Override Timeout')).toBeInTheDocument();
+      const input = screen.getByTestId('query-timeout-override-input');
+      expect(input).not.toHaveAttribute('placeholder');
+      expect(input).toHaveValue(null);
+    });
+
+    it('does not introduce a timeout when other controls change and the field is unset', async () => {
+      const { onChange } = await setup();
+
+      fireEvent.change(screen.getByTestId('nrql-textarea'), { target: { value: 'SELECT count(*) FROM Log' } });
+      fireEvent.click(screen.getByTestId('grafana-time-toggle'));
+
+      expect(onChange).toHaveBeenCalled();
+      for (const [q] of onChange.mock.calls) {
+        expect(q.timeoutSeconds).toBeUndefined();
+      }
+    });
+
+    it.each([5, 60, 120])('shows no capped notice for in-range value %i', async (value) => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: value } });
+
+      fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
+
+      expect(screen.queryByText(/Capped to/)).not.toBeInTheDocument();
+    });
+
     it('starts expanded when a timeout override is already set', async () => {
       await setup({ query: { ...defaultQuery, timeoutSeconds: 30 } });
 
@@ -208,12 +238,37 @@ describe('QueryEditor', () => {
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: undefined }));
     });
 
-    it('snaps an out-of-range value to the nearest bound on blur and explains why', async () => {
+    it('keeps an out-of-range value as entered and explains what will apply', async () => {
       const { onChange } = await setup({ query: { ...defaultQuery, timeoutSeconds: 200 } });
 
       fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
 
-      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: 120 }));
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(200);
+      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+    });
+
+    it('shows the min notice for a value below the allowed range', async () => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: 3 } });
+
+      expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(3);
+      expect(screen.getByText(/Capped to 5s/)).toBeInTheDocument();
+    });
+
+    it('does not rewrite a typed out-of-range value when focus leaves the field', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent({ ...defaultQuery, timeoutSeconds: undefined });
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+      const input = screen.getByTestId('query-timeout-override-input');
+
+      fireEvent.change(input, { target: { value: '130' } });
+      await flush();
+      expect(screen.queryByText(/Capped to 120s/)).not.toBeInTheDocument();
+
+      fireEvent.blur(input);
+      await flush();
+
+      expect(getLatestQuery().timeoutSeconds).toBe(130);
+      expect(input).toHaveValue(130);
       expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
     });
 

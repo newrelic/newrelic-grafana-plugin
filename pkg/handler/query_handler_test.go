@@ -619,3 +619,26 @@ func TestIsLogQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestClampQueryTimeout(t *testing.T) {
+	tests := []struct {
+		name  string
+		input int
+		want  int
+	}{
+		{"unset stays unset", 0, 0},
+		{"minimum passes through", 5, 5},
+		{"in range passes through", 60, 60},
+		{"maximum passes through", 120, 120},
+		{"just below minimum is raised", 4, 5},
+		{"just above maximum is lowered", 121, 120},
+		{"far above maximum is lowered", 130, 120},
+		{"negative is raised to minimum", -10, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, clampQueryTimeout(tt.input))
+		})
+	}
+}

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-09-22
 
 ### Added
-- Per-panel NRQL query timeout override (5-120s), addressing queries that hit NerdGraph's implicit ~5s default during high-traffic events. Out-of-range values are clamped rather than rejected.
+- Per-panel NRQL query timeout override (up to 120 seconds), for queries that time out under NerdGraph's default timeout during high-traffic events. Out-of-range values are clamped to New Relic's allowed range.
 
 ### Changed
 - Bumped `newrelic-client-go` to v2.94.1.

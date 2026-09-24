@@ -23,7 +23,8 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   // Starts open when a timeout override is already set, so a remount (e.g. from
   // toggling Auto time) can't visually hide a value that's still in effect.
   const [advancedExpanded, setAdvancedExpanded] = useState(() => query.timeoutSeconds != null);
-  const [timeoutCappedMessage, setTimeoutCappedMessage] = useState('');
+  // Hidden while typing, so partial input (e.g. "1" on the way to "130") doesn't flash a notice.
+  const [showTimeoutCapNotice, setShowTimeoutCapNotice] = useState(true);
   const [validationError, setValidationError] = useState<string>('');
   const [useGrafanaTime, setUseGrafanaTime] = useState(
     query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
@@ -217,35 +218,30 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   }, [rawNRQL, query, onChange]);
 
   /**
-   * Handles typing into the per-panel query timeout override. Blank clears it
-   * (falls back to New Relic's own default).
+   * Handles typing into the per-panel query timeout override. Blank clears it,
+   * so no timeout is sent and NerdGraph's own default applies.
    */
   const handleTimeoutOverrideChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
     const next = value === '' ? undefined : Number(value);
-    setTimeoutCappedMessage('');
+    setShowTimeoutCapNotice(false);
     timeoutSecondsRef.current = next;
     onChange({ ...query, timeoutSeconds: next });
   }, [query, onChange]);
 
-  /**
-   * Snaps an out-of-range value to New Relic's allowed 5-120s window on blur,
-   * so the field always shows what the backend will actually use, and leaves a
-   * brief notice explaining why the number changed.
-   */
-  const handleTimeoutOverrideBlur = useCallback(() => {
-    if (query.timeoutSeconds == null || Number.isNaN(query.timeoutSeconds)) {
-      return;
-    }
-    const clamped = Math.min(MAX_QUERY_TIMEOUT_SECONDS, Math.max(MIN_QUERY_TIMEOUT_SECONDS, query.timeoutSeconds));
-    if (clamped !== query.timeoutSeconds) {
-      setTimeoutCappedMessage(`Capped to ${clamped}s (New Relic's ${clamped === MAX_QUERY_TIMEOUT_SECONDS ? 'max' : 'min'})`);
-      timeoutSecondsRef.current = clamped;
-      onChange({ ...query, timeoutSeconds: clamped });
-    } else {
-      setTimeoutCappedMessage('');
-    }
-  }, [query, onChange]);
+  // The entered value is kept as-is; the backend clamps it, and this notice says what will apply.
+  const timeoutCappedTo =
+    query.timeoutSeconds == null || Number.isNaN(query.timeoutSeconds)
+      ? null
+      : query.timeoutSeconds > MAX_QUERY_TIMEOUT_SECONDS
+        ? MAX_QUERY_TIMEOUT_SECONDS
+        : query.timeoutSeconds < MIN_QUERY_TIMEOUT_SECONDS
+          ? MIN_QUERY_TIMEOUT_SECONDS
+          : null;
+  const timeoutCappedMessage =
+    showTimeoutCapNotice && timeoutCappedTo != null
+      ? `Capped to ${timeoutCappedTo}s (New Relic's ${timeoutCappedTo === MAX_QUERY_TIMEOUT_SECONDS ? 'max' : 'min'})`
+      : '';
 
   /**
    * Toggles between query builder and text editor
@@ -379,9 +375,9 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         {advancedExpanded && (
           <InlineFieldRow>
             <InlineField
-              label="Query timeout"
-              labelWidth={16}
-              tooltip="Per-panel timeout override, 5-120s. Blank uses New Relic's 5s default."
+              label="Override Timeout"
+              labelWidth={20}
+              tooltip="Overrides the default query timeout for this panel, up to 120 seconds."
               invalid={!!timeoutCappedMessage}
               error={timeoutCappedMessage}
             >
@@ -392,12 +388,11 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
                 min={MIN_QUERY_TIMEOUT_SECONDS}
                 max={MAX_QUERY_TIMEOUT_SECONDS}
                 value={query.timeoutSeconds ?? ''}
-                placeholder="New Relic default (5s)"
                 width={30}
                 suffix="seconds"
                 onChange={handleTimeoutOverrideChange}
-                onBlur={handleTimeoutOverrideBlur}
-                aria-label="Query timeout override in seconds"
+                onBlur={() => setShowTimeoutCapNotice(true)}
+                aria-label="Override Timeout in seconds"
               />
             </InlineField>
           </InlineFieldRow>
