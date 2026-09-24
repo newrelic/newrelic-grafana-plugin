@@ -18,6 +18,7 @@ This plugin allows you to visualize New Relic data directly in Grafana dashboard
 * Secure API key storage using Grafana's secure storage
 * Multi-region support (US and EU New Relic regions)
 * Time series data visualization with accurate time field handling
+* Per-panel query timeout override (up to 120 seconds) for long-running NRQL queries
 
 ## Current Support:
 

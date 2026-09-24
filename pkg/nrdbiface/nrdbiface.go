@@ -5,29 +5,123 @@ package nrdbiface
 
 import (
 	"context"
+	"time"
 
+	"github.com/newrelic/newrelic-client-go/v2/pkg/nerdgraph"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
 )
 
 // NRDBQueryExecutor defines the interface for executing NRQL queries against New Relic.
 // This abstraction allows for easier testing and dependency injection.
+//
+// timeoutSeconds is an optional per-query NRQL timeout override (5-120s); 0 means
+// unset, in which case New Relic's own default timeout applies, unchanged.
 type NRDBQueryExecutor interface {
-	QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error)
-	PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error)
+	QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error)
+	PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error)
 }
 
-// RealNRDBExecutor is a wrapper around the real nrdb.Nrdb that implements NRDBQueryExecutor.
-// This allows us to use dependency injection in production code.
+// RealNRDBExecutor is a wrapper around the real New Relic client that implements
+// NRDBQueryExecutor. This allows us to use dependency injection in production code.
 type RealNRDBExecutor struct {
-	NRDB nrdb.Nrdb
+	NRDB      nrdb.Nrdb
+	NerdGraph nerdgraph.NerdGraph
 }
 
-// QueryWithContext executes an NRQL query using the real New Relic client.
-func (r *RealNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
-	return r.NRDB.QueryWithContext(ctx, accountID, query)
+// contextWithTimeoutBuffer sets a generous deadline alongside the GraphQL timeout
+// argument, which is what actually lets NerdGraph run the query longer — this ctx
+// deadline is a secondary, best-effort safeguard, not a guaranteed circuit breaker:
+// the vendored newrelic-client-go HTTP layer has not been observed to abort an
+// in-flight request on context deadline/cancellation. When timeoutSeconds is 0, ctx
+// is returned unchanged.
+func contextWithTimeoutBuffer(ctx context.Context, timeoutSeconds int) (context.Context, context.CancelFunc) {
+	if timeoutSeconds == 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, time.Duration(timeoutSeconds+10)*time.Second)
 }
 
-// PerformNRQLQueryWithContext executes an NRQL query using the enhanced New Relic client.
-func (r *RealNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
-	return r.NRDB.PerformNRQLQuery(accountID, query)
+// QueryWithContext executes an NRQL query using the real New Relic client. When
+// timeoutSeconds is set, it switches to the timeout-capable client method.
+func (r *RealNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
+	ctx, cancel := contextWithTimeoutBuffer(ctx, timeoutSeconds)
+	defer cancel()
+
+	if timeoutSeconds == 0 {
+		return r.NRDB.QueryWithContext(ctx, accountID, query)
+	}
+	return r.NRDB.QueryWithAdditionalOptionsWithContext(ctx, accountID, query, nrdb.Seconds(timeoutSeconds), false)
+}
+
+// gqlNrqlQueryWithTimeout mirrors gqlNrqlQuery (the client library's document behind
+// PerformNRQLQueryWithContext) field-for-field, adding only the $timeout variable.
+// Deliberately does NOT request rawResponse: query_handler.go branches on RawResponse
+// being non-nil, and that document does request it — copying it here would silently
+// switch FACET+TIMESERIES rendering from FormatFacetedTimeseriesResults to
+// FormatUniversal.
+const gqlNrqlQueryWithTimeout = `query (
+	$query: Nrql!,
+	$accountId: Int!,
+	$timeout: Seconds
+)
+{
+  actor {
+    account(id: $accountId) {
+      nrql(query: $query, timeout: $timeout) {
+        currentResults
+        otherResult
+        previousResults
+        results
+        totalResult
+        metadata {
+          eventTypes
+          facets
+          messages
+          timeWindow {
+            begin
+            compareWith
+            end
+            since
+            until
+          }
+        }
+      }
+    }
+  }
+}
+`
+
+// gqlNRQLQueryWithTimeoutResponse mirrors the client library's unexported
+// gqlNRQLQueryResponseCustomized so PerformNRQLQueryWithContext's hand-built request
+// unmarshals into the same, exported NRDBResultContainerMultiResultCustomized type.
+type gqlNRQLQueryWithTimeoutResponse struct {
+	Actor struct {
+		Account struct {
+			NRQL nrdb.NRDBResultContainerMultiResultCustomized
+		}
+	}
+}
+
+// PerformNRQLQueryWithContext executes an NRQL query using the enhanced New Relic
+// client (used for FACET+TIMESERIES queries). When timeoutSeconds is set, no client
+// method supports a timeout for this response shape, so it sends a hand-built GraphQL
+// document (gqlNrqlQueryWithTimeout) via NerdGraph directly.
+func (r *RealNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+	ctx, cancel := contextWithTimeoutBuffer(ctx, timeoutSeconds)
+	defer cancel()
+
+	if timeoutSeconds == 0 {
+		return r.NRDB.PerformNRQLQueryWithContext(ctx, accountID, query)
+	}
+
+	vars := map[string]interface{}{
+		"accountId": accountID,
+		"query":     query,
+		"timeout":   nrdb.Seconds(timeoutSeconds),
+	}
+	respBody := gqlNRQLQueryWithTimeoutResponse{}
+	if err := r.NerdGraph.QueryWithResponseAndContext(ctx, gqlNrqlQueryWithTimeout, vars, &respBody); err != nil {
+		return nil, err
+	}
+	return &respBody.Actor.Account.NRQL, nil
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { Button, Switch, ButtonGroup, Icon, Tooltip, CodeEditor } from '@grafana/ui';
+import { Button, Switch, ButtonGroup, Icon, Tooltip, CodeEditor, InlineField, InlineFieldRow, Input } from '@grafana/ui';
 import { DataSource } from '../datasource';
 import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
@@ -10,16 +10,35 @@ import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VAR
 import { registerNrqlCompletionProvider } from '../utils/nrqlCompletions';
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
+// New Relic's allowed NRQL query timeout range, matching the backend clamp.
+const MIN_QUERY_TIMEOUT_SECONDS = 5;
+const MAX_QUERY_TIMEOUT_SECONDS = 120;
+
 /**
  * Query editor component for New Relic NRQL queries
  * Provides both a visual query builder and raw text editor with time picker integration
  */
 export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const [useQueryBuilder, setUseQueryBuilder] = useState(false);
+  // Starts open when a timeout override is already set, so a remount (e.g. from
+  // toggling Auto time) can't visually hide a value that's still in effect.
+  const [advancedExpanded, setAdvancedExpanded] = useState(() => query.timeoutSeconds != null);
+  // Hidden while typing, so partial input (e.g. "1" on the way to "130") doesn't flash a notice.
+  const [showTimeoutCapNotice, setShowTimeoutCapNotice] = useState(true);
   const [validationError, setValidationError] = useState<string>('');
   const [useGrafanaTime, setUseGrafanaTime] = useState(
     query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
   );
+
+  // Tracks the latest timeout override outside of the query prop. Other
+  // controls (e.g. the Auto time switch) build their next query object from
+  // `query`, which can still reflect a render Grafana hasn't caught up to yet
+  // if it arrives right after typing here — this ref is always current, so
+  // those handlers can re-assert it explicitly instead of trusting the prop.
+  const timeoutSecondsRef = useRef(query.timeoutSeconds);
+  useEffect(() => {
+    timeoutSecondsRef.current = query.timeoutSeconds;
+  }, [query.timeoutSeconds]);
 
   //On Editor Change Callback function
   function handleEditorChange(queryString: string) {
@@ -128,7 +147,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     // Only apply time integration when the user stops typing
     const finalQuery = queryText; // Keep the raw user input
 
-    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
 
@@ -146,7 +165,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       buildNRQLWithTimeIntegration(queryText, true) :
       queryText;
 
-    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime };
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
 
@@ -179,7 +198,11 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     const updatedQuery = {
       ...query,
       queryText: updatedQueryText,
-      useGrafanaTime: enabled
+      useGrafanaTime: enabled,
+      // Re-assert explicitly rather than trusting `query` to still carry it —
+      // this can fire before Grafana's re-render from the timeout field's own
+      // onChange has landed, so `query` here may be one step behind.
+      timeoutSeconds: timeoutSecondsRef.current,
     };
 
     onChange(updatedQuery);
@@ -193,6 +216,32 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       hasGrafanaVars: hasGrafanaTimeVariables(updatedQueryText),
     });
   }, [rawNRQL, query, onChange]);
+
+  /**
+   * Handles typing into the per-panel query timeout override. Blank clears it,
+   * so no timeout is sent and NerdGraph's own default applies.
+   */
+  const handleTimeoutOverrideChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const next = value === '' ? undefined : Number(value);
+    setShowTimeoutCapNotice(false);
+    timeoutSecondsRef.current = next;
+    onChange({ ...query, timeoutSeconds: next });
+  }, [query, onChange]);
+
+  // The entered value is kept as-is; the backend clamps it, and this notice says what will apply.
+  const timeoutCappedTo =
+    query.timeoutSeconds == null || Number.isNaN(query.timeoutSeconds)
+      ? null
+      : query.timeoutSeconds > MAX_QUERY_TIMEOUT_SECONDS
+        ? MAX_QUERY_TIMEOUT_SECONDS
+        : query.timeoutSeconds < MIN_QUERY_TIMEOUT_SECONDS
+          ? MIN_QUERY_TIMEOUT_SECONDS
+          : null;
+  const timeoutCappedMessage =
+    showTimeoutCapNotice && timeoutCappedTo != null
+      ? `Capped to ${timeoutCappedTo}s (New Relic's ${timeoutCappedTo === MAX_QUERY_TIMEOUT_SECONDS ? 'max' : 'min'})`
+      : '';
 
   /**
    * Toggles between query builder and text editor
@@ -309,6 +358,45 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
             {validationError ? 'Invalid query' : 'Run'}
           </Button>
         </div>
+      </div>
+
+      {/* Advanced: per-panel query timeout override */}
+      <div style={{ marginBottom: '12px' }}>
+        <Button
+          variant="secondary"
+          fill="text"
+          size="sm"
+          icon={advancedExpanded ? 'angle-down' : 'angle-right'}
+          onClick={() => setAdvancedExpanded((prev) => !prev)}
+          data-testid="query-editor-advanced-toggle"
+        >
+          Advanced
+        </Button>
+        {advancedExpanded && (
+          <InlineFieldRow>
+            <InlineField
+              label="Override Timeout"
+              labelWidth={20}
+              tooltip="Overrides the default query timeout for this panel, up to 120 seconds."
+              invalid={!!timeoutCappedMessage}
+              error={timeoutCappedMessage}
+            >
+              <Input
+                id="query-editor-timeout-override"
+                data-testid="query-timeout-override-input"
+                type="number"
+                min={MIN_QUERY_TIMEOUT_SECONDS}
+                max={MAX_QUERY_TIMEOUT_SECONDS}
+                value={query.timeoutSeconds ?? ''}
+                width={30}
+                suffix="seconds"
+                onChange={handleTimeoutOverrideChange}
+                onBlur={() => setShowTimeoutCapNotice(true)}
+                aria-label="Override Timeout in seconds"
+              />
+            </InlineField>
+          </InlineFieldRow>
+        )}
       </div>
 
       {/* Query Editor Content */}

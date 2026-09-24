@@ -53,7 +53,7 @@ func (e *Executor) Execute(ctx context.Context, accountID int, query string) (*n
 	}
 
 	nrql := nrdb.NRQL(query)
-	results, err := e.executor.QueryWithContext(ctx, accountID, nrql)
+	results, err := e.executor.QueryWithContext(ctx, accountID, nrql, 0)
 	if err != nil {
 		return nil, &ExecutionError{Query: query, Msg: "error from New Relic API", Err: err}
 	}

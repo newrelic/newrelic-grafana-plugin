@@ -83,7 +83,7 @@ type mockNRDBExecutor struct {
 	results  *nrdb.NRDBResultContainer
 }
 
-func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainer, error) {
+func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -99,9 +99,9 @@ func (m *mockNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, 
 }
 
 // Added to implement the full interface
-func (m *mockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
+func (m *mockNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainerMultiResultCustomized, error) {
 	// Convert standard result to multi-result
-	result, err := m.QueryWithContext(ctx, accountID, query)
+	result, err := m.QueryWithContext(ctx, accountID, query, timeoutSeconds)
 	if err != nil {
 		return nil, err
 	}

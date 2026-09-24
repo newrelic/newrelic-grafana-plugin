@@ -18,7 +18,7 @@ jest.mock('../../utils/nrqlCompletions', () => ({
 }));
 
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { QueryEditor } from '../QueryEditor';
 import { NewRelicQuery } from '../../types';
 import { dateTime } from '@grafana/data';
@@ -115,6 +115,48 @@ const setup = async (props = {}) => {
   return { onChange, onRunQuery, datasource };
 };
 
+/**
+ * Renders QueryEditor behind a parent that only commits a new `query` prop
+ * asynchronously (like Grafana's real dashboard state), instead of the
+ * synchronous re-render `setup()` above uses. Lets tests reproduce races
+ * where a second control's handler reads `query` before an earlier edit's
+ * onChange has actually landed.
+ */
+const setupWithAsyncParent = async (initialQuery: NewRelicQuery) => {
+  const onRunQuery = jest.fn();
+  const datasource = createMockDatasource();
+  const range = createMockTimeRange();
+  let latestQuery = initialQuery;
+
+  function Harness() {
+    const [query, setQuery] = React.useState(initialQuery);
+    (Harness as any).setQuery = setQuery;
+    return (
+      <QueryEditor
+        query={query}
+        onChange={(q: NewRelicQuery) => {
+          latestQuery = q;
+          // Defer the commit — mirrors Grafana's real (asynchronous) state update.
+          setTimeout(() => setQuery(q), 0);
+        }}
+        onRunQuery={onRunQuery}
+        datasource={datasource}
+        range={range}
+      />
+    );
+  }
+
+  await act(async () => {
+    render(<Harness />);
+  });
+
+  return {
+    onRunQuery,
+    getLatestQuery: () => latestQuery,
+    flush: () => act(() => new Promise((resolve) => setTimeout(resolve, 10))),
+  };
+};
+
 describe('QueryEditor', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -129,6 +171,133 @@ describe('QueryEditor', () => {
 
     it('renders with textarea by default (NRQL Editor mode)', async () => {
       await setup();
+    });
+  });
+
+  describe('Advanced timeout override', () => {
+    it('starts collapsed and expands on click', async () => {
+      await setup();
+
+      expect(screen.queryByTestId('query-timeout-override-input')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+
+      expect(screen.getByTestId('query-timeout-override-input')).toBeInTheDocument();
+    });
+
+    it('renders the Override Timeout label with an empty field', async () => {
+      await setup();
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+
+      expect(screen.getByText('Override Timeout')).toBeInTheDocument();
+      const input = screen.getByTestId('query-timeout-override-input');
+      expect(input).not.toHaveAttribute('placeholder');
+      expect(input).toHaveValue(null);
+    });
+
+    it('does not introduce a timeout when other controls change and the field is unset', async () => {
+      const { onChange } = await setup();
+
+      fireEvent.change(screen.getByTestId('nrql-textarea'), { target: { value: 'SELECT count(*) FROM Log' } });
+      fireEvent.click(screen.getByTestId('grafana-time-toggle'));
+
+      expect(onChange).toHaveBeenCalled();
+      for (const [q] of onChange.mock.calls) {
+        expect(q.timeoutSeconds).toBeUndefined();
+      }
+    });
+
+    it.each([5, 60, 120])('shows no capped notice for in-range value %i', async (value) => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: value } });
+
+      fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
+
+      expect(screen.queryByText(/Capped to/)).not.toBeInTheDocument();
+    });
+
+    it('starts expanded when a timeout override is already set', async () => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: 30 } });
+
+      expect(screen.getByTestId('query-timeout-override-input')).toBeInTheDocument();
+    });
+
+    it('fires onChange with the typed timeout value', async () => {
+      const { onChange } = await setup();
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+
+      fireEvent.change(screen.getByTestId('query-timeout-override-input'), { target: { value: '30' } });
+
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: 30 }));
+    });
+
+    it('clears the override when the input is emptied', async () => {
+      const { onChange } = await setup({ query: { ...defaultQuery, timeoutSeconds: 30 } });
+
+      fireEvent.change(screen.getByTestId('query-timeout-override-input'), { target: { value: '' } });
+
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: undefined }));
+    });
+
+    it('keeps an out-of-range value as entered and explains what will apply', async () => {
+      const { onChange } = await setup({ query: { ...defaultQuery, timeoutSeconds: 200 } });
+
+      fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(200);
+      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+    });
+
+    it('shows the min notice for a value below the allowed range', async () => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: 3 } });
+
+      expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(3);
+      expect(screen.getByText(/Capped to 5s/)).toBeInTheDocument();
+    });
+
+    it('does not rewrite a typed out-of-range value when focus leaves the field', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent({ ...defaultQuery, timeoutSeconds: undefined });
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+      const input = screen.getByTestId('query-timeout-override-input');
+
+      fireEvent.change(input, { target: { value: '130' } });
+      await flush();
+      expect(screen.queryByText(/Capped to 120s/)).not.toBeInTheDocument();
+
+      fireEvent.blur(input);
+      await flush();
+
+      expect(getLatestQuery().timeoutSeconds).toBe(130);
+      expect(input).toHaveValue(130);
+      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+    });
+
+    it('clears the capped notice once the value is edited again', async () => {
+      await setup({ query: { ...defaultQuery, timeoutSeconds: 200 } });
+      fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
+      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+
+      fireEvent.change(screen.getByTestId('query-timeout-override-input'), { target: { value: '60' } });
+
+      expect(screen.queryByText(/Capped to 120s/)).not.toBeInTheDocument();
+    });
+
+    it('survives an Auto time toggle fired before the typed value has round-tripped back as a prop', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent({ ...defaultQuery, timeoutSeconds: undefined });
+      fireEvent.click(screen.getByTestId('query-editor-advanced-toggle'));
+
+      // Type 45 into the timeout field — onChange fires, but (per the async
+      // harness) the parent hasn't committed a new `query` prop yet.
+      fireEvent.change(screen.getByTestId('query-timeout-override-input'), { target: { value: '45' } });
+
+      // Immediately toggle Auto time, before that commit lands — this is the
+      // exact race: handleTimeIntegrationToggle reads whatever `query` prop
+      // is currently rendered, which is still the pre-45 one.
+      fireEvent.click(screen.getByTestId('grafana-time-toggle'));
+
+      await flush();
+
+      expect(getLatestQuery().timeoutSeconds).toBe(45);
     });
   });
 });

@@ -67,7 +67,7 @@ func PerformHealthCheck1(ctx context.Context, dsSettings backend.DataSourceInsta
 	}
 
 	// Step 3: Create the executor wrapper for the real client
-	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb}
+	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb, NerdGraph: nrClient.NerdGraph}
 
 	// Step 4: Delegate the actual New Relic API connectivity check to the 'validator' package.
 	// This is where a real API call (e.g., a simple NRQL query) is performed to confirm
