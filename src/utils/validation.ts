@@ -150,6 +150,22 @@ export function validateAccountIdDetailed(accountId: string | number): Validatio
   return { isValid: true };
 }
 
+// New Relic's allowed NRQL query timeout range.
+export const MIN_QUERY_TIMEOUT_SECONDS = 5;
+export const MAX_QUERY_TIMEOUT_SECONDS = 120;
+
+/**
+ * Checks a per-panel timeout override; unset is valid.
+ */
+export function isValidTimeoutOverride(timeoutSeconds?: number): boolean {
+  return (
+    timeoutSeconds == null ||
+    (Number.isInteger(timeoutSeconds) &&
+      timeoutSeconds >= MIN_QUERY_TIMEOUT_SECONDS &&
+      timeoutSeconds <= MAX_QUERY_TIMEOUT_SECONDS)
+  );
+}
+
 /**
  * Validates an NRQL query string
  * @param query - The NRQL query to validate

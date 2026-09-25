@@ -4,15 +4,16 @@ import { Button, Switch, ButtonGroup, Icon, Tooltip, CodeEditor, InlineField, In
 import { DataSource } from '../datasource';
 import { NewRelicQuery, NewRelicDataSourceOptions } from '../types';
 import { NRQLQueryBuilder } from './query/NRQLQueryBuilder';
-import { validateNrqlQuery } from '../utils/validation';
+import {
+  validateNrqlQuery,
+  isValidTimeoutOverride,
+  MIN_QUERY_TIMEOUT_SECONDS,
+  MAX_QUERY_TIMEOUT_SECONDS,
+} from '../utils/validation';
 import { logger } from '../utils/logger';
 import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VARIABLES } from '../utils/timeUtils';
 import { registerNrqlCompletionProvider } from '../utils/nrqlCompletions';
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
-
-// New Relic's allowed NRQL query timeout range, matching the backend clamp.
-const MIN_QUERY_TIMEOUT_SECONDS = 5;
-const MAX_QUERY_TIMEOUT_SECONDS = 120;
 
 /**
  * Query editor component for New Relic NRQL queries
@@ -23,8 +24,8 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   // Starts open when a timeout override is already set, so a remount (e.g. from
   // toggling Auto time) can't visually hide a value that's still in effect.
   const [advancedExpanded, setAdvancedExpanded] = useState(() => query.timeoutSeconds != null);
-  // Hidden while typing, so partial input (e.g. "1" on the way to "130") doesn't flash a notice.
-  const [showTimeoutCapNotice, setShowTimeoutCapNotice] = useState(true);
+  // Hidden while typing, so partial input (e.g. "1" on the way to "15") doesn't flash a notice.
+  const [showTimeoutError, setShowTimeoutError] = useState(true);
   const [validationError, setValidationError] = useState<string>('');
   const [useGrafanaTime, setUseGrafanaTime] = useState(
     query.useGrafanaTime ?? !hasGrafanaTimeVariables(query.queryText || '')
@@ -224,23 +225,15 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   const handleTimeoutOverrideChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
     const next = value === '' ? undefined : Number(value);
-    setShowTimeoutCapNotice(false);
+    setShowTimeoutError(false);
     timeoutSecondsRef.current = next;
     onChange({ ...query, timeoutSeconds: next });
   }, [query, onChange]);
 
-  // The entered value is kept as-is; the backend clamps it, and this notice says what will apply.
-  const timeoutCappedTo =
-    query.timeoutSeconds == null || Number.isNaN(query.timeoutSeconds)
-      ? null
-      : query.timeoutSeconds > MAX_QUERY_TIMEOUT_SECONDS
-        ? MAX_QUERY_TIMEOUT_SECONDS
-        : query.timeoutSeconds < MIN_QUERY_TIMEOUT_SECONDS
-          ? MIN_QUERY_TIMEOUT_SECONDS
-          : null;
-  const timeoutCappedMessage =
-    showTimeoutCapNotice && timeoutCappedTo != null
-      ? `Capped to ${timeoutCappedTo}s (New Relic's ${timeoutCappedTo === MAX_QUERY_TIMEOUT_SECONDS ? 'max' : 'min'})`
+  // An invalid value is kept as entered; filterQuery blocks the query until it's fixed or cleared.
+  const timeoutErrorMessage =
+    showTimeoutError && !isValidTimeoutOverride(query.timeoutSeconds)
+      ? `Up to ${MAX_QUERY_TIMEOUT_SECONDS}s allowed, or leave empty for default.`
       : '';
 
   /**
@@ -378,8 +371,8 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
               label="Override Timeout"
               labelWidth={20}
               tooltip="Overrides the default query timeout for this panel, up to 120 seconds."
-              invalid={!!timeoutCappedMessage}
-              error={timeoutCappedMessage}
+              invalid={!!timeoutErrorMessage}
+              error={timeoutErrorMessage}
             >
               <Input
                 id="query-editor-timeout-override"
@@ -391,7 +384,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
                 width={30}
                 suffix="seconds"
                 onChange={handleTimeoutOverrideChange}
-                onBlur={() => setShowTimeoutCapNotice(true)}
+                onBlur={() => setShowTimeoutError(true)}
                 aria-label="Override Timeout in seconds"
               />
             </InlineField>

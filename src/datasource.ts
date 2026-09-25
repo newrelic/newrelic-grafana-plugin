@@ -11,7 +11,7 @@ import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { NewRelicQuery, NewRelicDataSourceOptions } from './types';
-import { validateNrqlQuery } from './utils/validation';
+import { validateNrqlQuery, isValidTimeoutOverride } from './utils/validation';
 import { logger } from './utils/logger';
 
 /**
@@ -182,6 +182,11 @@ export class DataSource extends DataSourceWithBackend<NewRelicQuery, NewRelicDat
           refId: query.refId,
           error: validation.message,
         });
+        return false;
+      }
+
+      if (!isValidTimeoutOverride(query.timeoutSeconds)) {
+        logger.debug('Query filtered out: invalid timeout override', { refId: query.refId });
         return false;
       }
 

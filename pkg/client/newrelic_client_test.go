@@ -2,11 +2,15 @@ package client
 
 import (
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockNewRelicClientFactory implements NewRelicClientFactory for testing.
@@ -331,3 +335,42 @@ func TestDefaultConfig(t *testing.T) {
 	assert.IsType(t, time.Duration(0), config.Timeout)
 	assert.Greater(t, config.Timeout, time.Duration(0))
 }
+
+func TestNewClient_RegionRoutesToNerdGraphHost(t *testing.T) {
+	tests := []struct {
+		region   string
+		wantHost string
+	}{
+		{"US", "api.newrelic.com"},
+		{"EU", "api.eu.newrelic.com"},
+	}
+
+	originalNewFunc := NewrelicNewFunc
+	t.Cleanup(func() { NewrelicNewFunc = originalNewFunc })
+
+	for _, tt := range tests {
+		t.Run(tt.region, func(t *testing.T) {
+			var gotHost string
+			recorder := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				gotHost = r.URL.Host
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":{}}`)), Header: http.Header{}}, nil
+			})
+			NewrelicNewFunc = func(opts ...newrelic.ConfigOption) (*newrelic.NewRelic, error) {
+				return originalNewFunc(append(opts, newrelic.ConfigHTTPTransport(recorder))...)
+			}
+
+			cfg := DefaultConfig()
+			cfg.APIKey = "test-key"
+			cfg.Region = tt.region
+			nrClient, err := NewClient(cfg)
+			require.NoError(t, err)
+			_ = nrClient.NerdGraph.QueryWithResponse(`query { actor { user { id } } }`, nil, &struct{}{})
+
+			assert.Equal(t, tt.wantHost, gotHost)
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

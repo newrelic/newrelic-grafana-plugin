@@ -84,6 +84,9 @@ func NewClient(config ClientConfig) (*newrelic.NewRelic, error) {
 		newrelic.ConfigUserAgent(config.UserAgent),
 		newrelic.ConfigServiceName(clientServiceName),
 	}
+	if config.Timeout > 0 {
+		cfgOpts = append(cfgOpts, newrelic.ConfigHTTPTimeout(config.Timeout))
+	}
 
 	// Create the client directly using the variable function to allow for testing
 	nrClient, err := NewrelicNewFunc(cfgOpts...)

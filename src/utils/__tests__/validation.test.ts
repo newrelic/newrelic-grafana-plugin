@@ -7,6 +7,7 @@ import {
   validateConfiguration,
   validateApiKeyDetailed,
   validateAccountIdDetailed,
+  isValidTimeoutOverride,
 } from '../validation';
 
 describe('Validation Utils', () => {
@@ -492,3 +493,12 @@ describe('Validation Utils', () => {
     });
   });
 }); 
+describe('isValidTimeoutOverride', () => {
+  it.each([undefined, 5, 60, 120])('accepts %p', (value) => {
+    expect(isValidTimeoutOverride(value)).toBe(true);
+  });
+
+  it.each([0, 3, 121, 140, -10, 1.5, NaN])('rejects %p', (value) => {
+    expect(isValidTimeoutOverride(value)).toBe(false);
+  });
+});
