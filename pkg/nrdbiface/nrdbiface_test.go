@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/newrelic/newrelic-client-go/v2/newrelic"
 	"github.com/newrelic/newrelic-client-go/v2/pkg/nrdb"
@@ -242,6 +244,14 @@ func TestRealNRDBExecutor_QueryWithContext_WithTimeoutOverride(t *testing.T) {
 
 	vars := captured.variables(t)
 	assert.Equal(t, float64(30), vars["timeout"], "the requested timeout must be sent on the wire")
+
+	// suggestedFacets and eventDefinitions have their own short server-side timeouts;
+	// their TIMEOUT errors would make the client retry the whole query. Override queries
+	// must request the same fields as unset ones.
+	body := string(captured.body)
+	for _, field := range []string{"suggestedFacets", "eventDefinitions", "rawResponse", "queryProgress"} {
+		assert.NotContains(t, body, field)
+	}
 }
 
 const enhancedQueryResponseJSON = `{"data":{"actor":{"account":{"nrql":{"results":[{"count":42}]}}}}}`
@@ -301,4 +311,59 @@ func TestRealNRDBExecutor_PerformNRQLQueryWithContext_PassesCtxThrough(t *testin
 	result, err := executor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction FACET appName TIMESERIES", 0)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
+}
+
+// TestRealNRDBExecutor_OverrideQueriesUseLongerHTTPClient scales the real timings
+// down: the default client gives up at 1s, the override client waits 5s, and the
+// fake NerdGraph answers after 2s.
+func TestRealNRDBExecutor_OverrideQueriesUseLongerHTTPClient(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		select {
+		case <-time.After(2 * time.Second):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(standardQueryResponseJSON))
+	}))
+	t.Cleanup(server.Close)
+
+	newClient := func(timeout time.Duration) *newrelic.NewRelic {
+		c, err := newrelic.New(
+			newrelic.ConfigPersonalAPIKey("test-key"),
+			newrelic.ConfigNerdGraphBaseURL(server.URL),
+			newrelic.ConfigHTTPTimeout(timeout),
+		)
+		require.NoError(t, err)
+		return c
+	}
+	defaultClient, overrideClient := newClient(time.Second), newClient(5*time.Second)
+	executor := &RealNRDBExecutor{
+		NRDB:              defaultClient.Nrdb,
+		NerdGraph:         defaultClient.NerdGraph,
+		OverrideNerdGraph: &overrideClient.NerdGraph,
+	}
+
+	t.Run("standard path with override", func(t *testing.T) {
+		atomic.StoreInt32(&hits, 0)
+		result, err := executor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 60)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&hits), "must succeed on the first attempt, with no retries")
+	})
+
+	t.Run("FACET+TIMESERIES path with override", func(t *testing.T) {
+		atomic.StoreInt32(&hits, 0)
+		result, err := executor.PerformNRQLQueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction FACET appName TIMESERIES", 60)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&hits), "must succeed on the first attempt, with no retries")
+	})
+
+	t.Run("no override keeps using the default client", func(t *testing.T) {
+		_, err := executor.QueryWithContext(context.Background(), 12345, "SELECT count(*) FROM Transaction", 0)
+		assert.Error(t, err, "unset timeout must still go through the default client and its shorter HTTP timeout")
+	})
 }

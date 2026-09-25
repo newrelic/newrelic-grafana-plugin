@@ -26,6 +26,15 @@ type NRDBQueryExecutor interface {
 type RealNRDBExecutor struct {
 	NRDB      nrdb.Nrdb
 	NerdGraph nerdgraph.NerdGraph
+	// Optional client for timeout-override queries; falls back to NerdGraph when nil.
+	OverrideNerdGraph *nerdgraph.NerdGraph
+}
+
+func (r *RealNRDBExecutor) overrideNerdGraph() *nerdgraph.NerdGraph {
+	if r.OverrideNerdGraph != nil {
+		return r.OverrideNerdGraph
+	}
+	return &r.NerdGraph
 }
 
 // contextWithTimeoutBuffer sets a generous deadline alongside the GraphQL timeout
@@ -42,7 +51,10 @@ func contextWithTimeoutBuffer(ctx context.Context, timeoutSeconds int) (context.
 }
 
 // QueryWithContext executes an NRQL query using the real New Relic client. When
-// timeoutSeconds is set, it switches to the timeout-capable client method.
+// timeoutSeconds is set, it sends gqlNrqlQueryWithTimeout via NerdGraph rather than
+// QueryWithAdditionalOptions, whose document also requests suggestedFacets: that field
+// has its own short server-side timeout, and its TIMEOUT error makes the client retry
+// the whole (slow) query.
 func (r *RealNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, query nrdb.NRQL, timeoutSeconds int) (*nrdb.NRDBResultContainer, error) {
 	ctx, cancel := contextWithTimeoutBuffer(ctx, timeoutSeconds)
 	defer cancel()
@@ -50,15 +62,28 @@ func (r *RealNRDBExecutor) QueryWithContext(ctx context.Context, accountID int, 
 	if timeoutSeconds == 0 {
 		return r.NRDB.QueryWithContext(ctx, accountID, query)
 	}
-	return r.NRDB.QueryWithAdditionalOptionsWithContext(ctx, accountID, query, nrdb.Seconds(timeoutSeconds), false)
+
+	respBody := gqlNRQLStandardQueryWithTimeoutResponse{}
+	if err := r.overrideNerdGraph().QueryWithResponseAndContext(ctx, gqlNrqlQueryWithTimeout, timeoutQueryVars(accountID, query, timeoutSeconds), &respBody); err != nil {
+		return nil, err
+	}
+	return &respBody.Actor.Account.NRQL, nil
+}
+
+func timeoutQueryVars(accountID int, query nrdb.NRQL, timeoutSeconds int) map[string]interface{} {
+	return map[string]interface{}{
+		"accountId": accountID,
+		"query":     query,
+		"timeout":   nrdb.Seconds(timeoutSeconds),
+	}
 }
 
 // gqlNrqlQueryWithTimeout mirrors gqlNrqlQuery (the client library's document behind
-// PerformNRQLQueryWithContext) field-for-field, adding only the $timeout variable.
+// both QueryWithContext and PerformNRQLQueryWithContext) field-for-field, adding only
+// the $timeout variable, so override queries request exactly what unset queries do.
 // Deliberately does NOT request rawResponse: query_handler.go branches on RawResponse
-// being non-nil, and that document does request it — copying it here would silently
-// switch FACET+TIMESERIES rendering from FormatFacetedTimeseriesResults to
-// FormatUniversal.
+// being non-nil for FACET+TIMESERIES results, and requesting it would silently switch
+// their rendering from FormatFacetedTimeseriesResults to FormatUniversal.
 const gqlNrqlQueryWithTimeout = `query (
 	$query: Nrql!,
 	$accountId: Int!,
@@ -102,6 +127,15 @@ type gqlNRQLQueryWithTimeoutResponse struct {
 	}
 }
 
+// gqlNRQLStandardQueryWithTimeoutResponse is the same shape for QueryWithContext.
+type gqlNRQLStandardQueryWithTimeoutResponse struct {
+	Actor struct {
+		Account struct {
+			NRQL nrdb.NRDBResultContainer
+		}
+	}
+}
+
 // PerformNRQLQueryWithContext executes an NRQL query using the enhanced New Relic
 // client (used for FACET+TIMESERIES queries). When timeoutSeconds is set, no client
 // method supports a timeout for this response shape, so it sends a hand-built GraphQL
@@ -114,13 +148,8 @@ func (r *RealNRDBExecutor) PerformNRQLQueryWithContext(ctx context.Context, acco
 		return r.NRDB.PerformNRQLQueryWithContext(ctx, accountID, query)
 	}
 
-	vars := map[string]interface{}{
-		"accountId": accountID,
-		"query":     query,
-		"timeout":   nrdb.Seconds(timeoutSeconds),
-	}
 	respBody := gqlNRQLQueryWithTimeoutResponse{}
-	if err := r.NerdGraph.QueryWithResponseAndContext(ctx, gqlNrqlQueryWithTimeout, vars, &respBody); err != nil {
+	if err := r.overrideNerdGraph().QueryWithResponseAndContext(ctx, gqlNrqlQueryWithTimeout, timeoutQueryVars(accountID, query, timeoutSeconds), &respBody); err != nil {
 		return nil, err
 	}
 	return &respBody.Actor.Account.NRQL, nil

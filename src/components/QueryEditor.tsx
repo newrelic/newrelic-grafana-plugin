@@ -23,7 +23,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   // Starts open when a timeout override is already set, so a remount (e.g. from
   // toggling Auto time) can't visually hide a value that's still in effect.
   const [advancedExpanded, setAdvancedExpanded] = useState(() => query.timeoutSeconds != null);
-  // Hidden while typing, so partial input (e.g. "1" on the way to "130") doesn't flash a notice.
+  // Hidden while typing, so partial input (e.g. "1" on the way to "15") doesn't flash a notice.
   const [showTimeoutCapNotice, setShowTimeoutCapNotice] = useState(true);
   const [validationError, setValidationError] = useState<string>('');
   const [useGrafanaTime, setUseGrafanaTime] = useState(

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"newrelic-grafana-plugin/pkg/client"
 	"newrelic-grafana-plugin/pkg/handler"
@@ -19,6 +20,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
+
+// overrideQueryHTTPTimeout covers the 120s max query timeout plus network overhead.
+const overrideQueryHTTPTimeout = 130 * time.Second
 
 var (
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
@@ -94,8 +98,21 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
 	}
 
+	// Client for timeout-override queries, which can exceed the default 30s.
+	overrideClientConfig := clientConfig
+	overrideClientConfig.Timeout = overrideQueryHTTPTimeout
+	overrideClient, err := client.NewClient(overrideClientConfig)
+	if err != nil {
+		logger.Error("Failed to create New Relic client", "error", err, "datasourceID", req.PluginContext.DataSourceInstanceSettings.ID)
+		return nil, fmt.Errorf("failed to create New Relic client: %w", err)
+	}
+
 	// Create the executor wrapper for the real client
-	executor := &nrdbiface.RealNRDBExecutor{NRDB: nrClient.Nrdb, NerdGraph: nrClient.NerdGraph}
+	executor := &nrdbiface.RealNRDBExecutor{
+		NRDB:              nrClient.Nrdb,
+		NerdGraph:         nrClient.NerdGraph,
+		OverrideNerdGraph: &overrideClient.NerdGraph,
+	}
 
 	// Process queries concurrently using a worker pool
 	queryResults := make(chan struct {
