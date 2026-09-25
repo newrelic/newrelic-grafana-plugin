@@ -35,6 +35,7 @@ jest.mock('../query/NRQLQueryBuilder', () => ({
 }));
 
 jest.mock('../../utils/validation', () => ({
+  ...jest.requireActual('../../utils/validation'),
   validateNrqlQuery: jest.fn((queryText: string) => ({
     isValid: !queryText.includes('INVALID') && queryText.trim().length > 0,
     message: queryText.includes('INVALID') ? 'Invalid NRQL syntax' :
@@ -207,12 +208,12 @@ describe('QueryEditor', () => {
       }
     });
 
-    it.each([5, 60, 120])('shows no capped notice for in-range value %i', async (value) => {
+    it.each([5, 60, 120])('shows no error for in-range value %i', async (value) => {
       await setup({ query: { ...defaultQuery, timeoutSeconds: value } });
 
       fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
 
-      expect(screen.queryByText(/Capped to/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Up to 120s allowed/)).not.toBeInTheDocument();
     });
 
     it('starts expanded when a timeout override is already set', async () => {
@@ -238,21 +239,21 @@ describe('QueryEditor', () => {
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: undefined }));
     });
 
-    it('keeps an out-of-range value as entered and explains what will apply', async () => {
+    it('keeps an out-of-range value as entered and marks it invalid', async () => {
       const { onChange } = await setup({ query: { ...defaultQuery, timeoutSeconds: 200 } });
 
       fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
 
       expect(onChange).not.toHaveBeenCalled();
       expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(200);
-      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+      expect(screen.getByText(/Up to 120s allowed, or leave empty for default\./)).toBeInTheDocument();
     });
 
-    it('shows the min notice for a value below the allowed range', async () => {
+    it('marks a value below the allowed range invalid', async () => {
       await setup({ query: { ...defaultQuery, timeoutSeconds: 3 } });
 
       expect(screen.getByTestId('query-timeout-override-input')).toHaveValue(3);
-      expect(screen.getByText(/Capped to 5s/)).toBeInTheDocument();
+      expect(screen.getByText(/Up to 120s allowed, or leave empty for default\./)).toBeInTheDocument();
     });
 
     it('does not rewrite a typed out-of-range value when focus leaves the field', async () => {
@@ -262,24 +263,24 @@ describe('QueryEditor', () => {
 
       fireEvent.change(input, { target: { value: '130' } });
       await flush();
-      expect(screen.queryByText(/Capped to 120s/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Up to 120s allowed, or leave empty for default\./)).not.toBeInTheDocument();
 
       fireEvent.blur(input);
       await flush();
 
       expect(getLatestQuery().timeoutSeconds).toBe(130);
       expect(input).toHaveValue(130);
-      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+      expect(screen.getByText(/Up to 120s allowed, or leave empty for default\./)).toBeInTheDocument();
     });
 
-    it('clears the capped notice once the value is edited again', async () => {
+    it('clears the error once the value is edited again', async () => {
       await setup({ query: { ...defaultQuery, timeoutSeconds: 200 } });
       fireEvent.blur(screen.getByTestId('query-timeout-override-input'));
-      expect(screen.getByText(/Capped to 120s/)).toBeInTheDocument();
+      expect(screen.getByText(/Up to 120s allowed, or leave empty for default\./)).toBeInTheDocument();
 
       fireEvent.change(screen.getByTestId('query-timeout-override-input'), { target: { value: '60' } });
 
-      expect(screen.queryByText(/Capped to 120s/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Up to 120s allowed, or leave empty for default\./)).not.toBeInTheDocument();
     });
 
     it('survives an Auto time toggle fired before the typed value has round-tripped back as a prop', async () => {
