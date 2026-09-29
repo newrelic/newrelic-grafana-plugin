@@ -244,6 +244,7 @@ export class DataSource extends DataSourceWithBackend<NewRelicQuery, NewRelicDat
       ...originalQuery,
       refId: `${originalQuery.refId}-logs-volume`,
       queryText: `SELECT count(*) FROM Log${whereClause} TIMESERIES`,
+      format: undefined,
     };
   }
 

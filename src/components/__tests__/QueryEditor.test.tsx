@@ -22,11 +22,13 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import { QueryEditor } from '../QueryEditor';
 import { NewRelicQuery } from '../../types';
 import { dateTime } from '@grafana/data';
+const logQueryCases: Array<{ query: string; showFormat: boolean }> = require('../../../pkg/handler/logQueryCases.json');
 
 jest.mock('../query/NRQLQueryBuilder', () => ({
   NRQLQueryBuilder: ({ value, onChange, onRunQuery, useGrafanaTime }: any) => (
     <div data-testid="nrql-query-builder">
       <button onClick={() => onChange('SELECT * FROM Transaction')}>Change Query</button>
+      <button onClick={() => onChange('SELECT hostname FROM Log')}>Change Log Query</button>
       <button onClick={onRunQuery}>Run Query</button>
       <span data-testid="builder-time-mode">{useGrafanaTime ? 'grafana-time' : 'manual-time'}</span>
       <span data-testid="builder-query-value">{value}</span>
@@ -172,6 +174,85 @@ describe('QueryEditor', () => {
 
     it('renders with textarea by default (NRQL Editor mode)', async () => {
       await setup();
+    });
+  });
+
+  describe('Log output format', () => {
+    const logQuery = { ...defaultQuery, queryText: 'SELECT message, hostname FROM Log' };
+
+    it('defaults to Logs for existing log queries', async () => {
+      await setup({ query: logQuery });
+      expect(screen.getByRole('group', { name: 'Log output format' })).toBeInTheDocument();
+      expect(screen.getByTestId('log-format-logs')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('log-format-table')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('offers Table for Log aggregates', async () => {
+      await setup({ query: { ...logQuery, queryText: 'SELECT count(*) FROM Log' } });
+      expect(screen.getByTestId('log-format-table')).toBeInTheDocument();
+    });
+
+    it('lets log queries request table output and retains the choice on text edits', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent(logQuery);
+      fireEvent.click(screen.getByTestId('log-format-table'));
+      await flush();
+      expect(getLatestQuery().format).toBe('table');
+      expect(screen.getByTestId('log-format-table')).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.change(screen.getByTestId('nrql-textarea'), { target: { value: 'SELECT message FROM Log' } });
+      expect(getLatestQuery().format).toBe('table');
+    });
+
+    it('switches back to Logs output', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent({ ...logQuery, format: 'table' });
+      fireEvent.click(screen.getByTestId('log-format-logs'));
+      await flush();
+      expect(getLatestQuery().format).toBe('logs');
+      expect(screen.getByTestId('log-format-logs')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('keeps table output when text changes before Grafana updates the query prop', async () => {
+      const { getLatestQuery } = await setupWithAsyncParent(logQuery);
+      fireEvent.click(screen.getByTestId('log-format-table'));
+      fireEvent.change(screen.getByTestId('nrql-textarea'), { target: { value: 'SELECT hostname FROM Log' } });
+      expect(getLatestQuery()).toEqual(expect.objectContaining({ format: 'table', queryText: 'SELECT hostname FROM Log' }));
+    });
+
+    it('keeps text edits when format changes before Grafana updates the query prop', async () => {
+      const { getLatestQuery, flush } = await setupWithAsyncParent(logQuery);
+      fireEvent.change(screen.getByTestId('nrql-textarea'), { target: { value: 'SELECT hostname FROM Log' } });
+      fireEvent.click(screen.getByTestId('log-format-table'));
+      expect(getLatestQuery()).toEqual(expect.objectContaining({ format: 'table', queryText: 'SELECT hostname FROM Log' }));
+      await flush();
+      expect(getLatestQuery().queryText).toBe('SELECT hostname FROM Log');
+    });
+
+    it('keeps builder edits when format changes before Grafana updates the query prop', async () => {
+      const { getLatestQuery } = await setupWithAsyncParent(logQuery);
+      fireEvent.click(screen.getByText('Query Builder'));
+      fireEvent.click(screen.getByText('Change Log Query'));
+      fireEvent.click(screen.getByTestId('log-format-table'));
+      expect(getLatestQuery()).toEqual(expect.objectContaining({
+        format: 'table',
+        queryText: 'SELECT hostname FROM Log SINCE $__from UNTIL $__to',
+      }));
+    });
+
+    it('keeps the time setting when the format changes before Grafana updates the query prop', async () => {
+      const { getLatestQuery } = await setupWithAsyncParent(logQuery);
+      fireEvent.click(screen.getByTestId('grafana-time-toggle'));
+      fireEvent.click(screen.getByTestId('log-format-table'));
+      expect(getLatestQuery()).toEqual(expect.objectContaining({ format: 'table', useGrafanaTime: false }));
+    });
+
+    it('does not show a log format choice for other event types', async () => {
+      await setup();
+      expect(screen.queryByTestId('log-format-table')).not.toBeInTheDocument();
+    });
+
+    it.each(logQueryCases)('shows Log output choice for $query: $showFormat', async ({ query: queryText, showFormat }) => {
+      await setup({ query: { ...logQuery, queryText } });
+      expect(Boolean(screen.queryByRole('group', { name: 'Log output format' }))).toBe(showFormat);
     });
   });
 

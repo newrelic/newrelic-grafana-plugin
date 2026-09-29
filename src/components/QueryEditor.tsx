@@ -13,6 +13,35 @@ import {
 import { logger } from '../utils/logger';
 import { buildNRQLWithTimeIntegration, hasGrafanaTimeVariables, GRAFANA_TIME_VARIABLES } from '../utils/timeUtils';
 import { registerNrqlCompletionProvider } from '../utils/nrqlCompletions';
+
+function topLevelClause(code: string, pattern: RegExp): { start: number; end: number } | undefined {
+  let match: RegExpExecArray | null;
+  let depth = 0;
+  let offset = 0;
+  while ((match = pattern.exec(code))) {
+    for (let i = offset; i < match.index; i++) {
+      if (code[i] === '(') {
+        depth++;
+      } else if (code[i] === ')' && depth > 0) {
+        depth--;
+      }
+    }
+    if (depth === 0) {
+      return { start: match.index, end: pattern.lastIndex };
+    }
+    offset = pattern.lastIndex;
+  }
+  return undefined;
+}
+
+function hasLogFormatChoice(queryText: string): boolean {
+  const uncommented = queryText.split('\n').filter((line) => !line.trim().startsWith('--')).join(' ');
+  const code = uncommented.replace(/'(?:\\.|''|[^'])*(?:'|$)|"(?:\\.|""|[^"])*(?:"|$)|`(?:\\.|``|[^`])*(?:`|$)/g, ' ');
+  const upper = uncommented.toUpperCase();
+  return Boolean(topLevelClause(code, /\bFROM\s+Log\b/gi)) &&
+    !(upper.includes('FACET') && upper.includes('TIMESERIES'));
+}
+
 type Props = QueryEditorProps<DataSource, NewRelicQuery, NewRelicDataSourceOptions>;
 
 /**
@@ -37,9 +66,15 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
   // if it arrives right after typing here — this ref is always current, so
   // those handlers can re-assert it explicitly instead of trusting the prop.
   const timeoutSecondsRef = useRef(query.timeoutSeconds);
+  const formatRef = useRef(query.format);
+  const queryTextRef = useRef(query.queryText);
   useEffect(() => {
     timeoutSecondsRef.current = query.timeoutSeconds;
-  }, [query.timeoutSeconds]);
+    formatRef.current = query.format;
+  }, [query.timeoutSeconds, query.format]);
+  useEffect(() => {
+    queryTextRef.current = query.queryText;
+  }, [query.queryText]);
 
   //On Editor Change Callback function
   function handleEditorChange(queryString: string) {
@@ -99,6 +134,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
         ? 'SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to'
         : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
       setRawNRQL(defaultQuery);
+      queryTextRef.current = defaultQuery;
       onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,8 +183,9 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     // For time integration, we need to be careful not to modify the text that's being typed
     // Only apply time integration when the user stops typing
     const finalQuery = queryText; // Keep the raw user input
+    queryTextRef.current = finalQuery;
 
-    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current };
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current, format: formatRef.current };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
 
@@ -165,8 +202,9 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     const finalQuery = useGrafanaTime ?
       buildNRQLWithTimeIntegration(queryText, true) :
       queryText;
+    queryTextRef.current = finalQuery;
 
-    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current };
+    const updatedQuery = { ...query, queryText: finalQuery, useGrafanaTime, timeoutSeconds: timeoutSecondsRef.current, format: formatRef.current };
     onChange(updatedQuery);
   }, [query, onChange, useGrafanaTime]);
 
@@ -204,8 +242,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       // this can fire before Grafana's re-render from the timeout field's own
       // onChange has landed, so `query` here may be one step behind.
       timeoutSeconds: timeoutSecondsRef.current,
+      format: formatRef.current,
     };
 
+    queryTextRef.current = updatedQueryText;
     onChange(updatedQuery);
     setRawNRQL(updatedQueryText);
     // Clear validation errors when changing time integration
@@ -227,7 +267,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     const next = value === '' ? undefined : Number(value);
     setShowTimeoutError(false);
     timeoutSecondsRef.current = next;
-    onChange({ ...query, timeoutSeconds: next });
+    onChange({ ...query, timeoutSeconds: next, format: formatRef.current });
   }, [query, onChange]);
 
   // An invalid value is kept as entered; filterQuery blocks the query until it's fixed or cleared.
@@ -255,6 +295,7 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           ? 'SELECT count(*) FROM Transaction SINCE $__from UNTIL $__to'
           : 'SELECT count(*) FROM Transaction SINCE 1 hour ago';
         setRawNRQL(defaultQuery);
+        queryTextRef.current = defaultQuery;
         onChange({ ...query, queryText: defaultQuery, useGrafanaTime });
       }
     }
@@ -296,6 +337,11 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     }
   }, [query.refId, query.queryText, useGrafanaTime, onRunQuery, validateQuery, validationError]);
 
+  const handleLogFormatChange = (format: 'logs' | 'table') => {
+    formatRef.current = format;
+    onChange({ ...query, queryText: queryTextRef.current, format, timeoutSeconds: timeoutSecondsRef.current, useGrafanaTime });
+  };
+
   return (
     <div style={{ padding: '8px 0' }}>
       {/* Header Controls */}
@@ -328,6 +374,31 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
 
         {/* Right side - Time picker toggle and run button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {hasLogFormatChoice(query.queryText || '') && (
+            <div role="group" aria-label="Log output format" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12px', color: '#8e8e8e' }}>Output</span>
+              <ButtonGroup>
+                <Button
+                  size="sm"
+                  variant={query.format === 'table' ? 'secondary' : 'primary'}
+                  aria-pressed={query.format !== 'table'}
+                  data-testid="log-format-logs"
+                  onClick={() => handleLogFormatChange('logs')}
+                >
+                  Logs
+                </Button>
+                <Button
+                  size="sm"
+                  variant={query.format === 'table' ? 'primary' : 'secondary'}
+                  aria-pressed={query.format === 'table'}
+                  data-testid="log-format-table"
+                  onClick={() => handleLogFormatChange('table')}
+                >
+                  Table
+                </Button>
+              </ButtonGroup>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Icon name="clock-nine" size="sm" />
             <span style={{ fontSize: '12px', color: '#8e8e8e' }}>Auto time</span>
