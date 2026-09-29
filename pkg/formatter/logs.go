@@ -93,6 +93,21 @@ func FormatLogResults(results *nrdb.NRDBResultContainer, query backend.DataQuery
 	return resp
 }
 
+func FormatLogTableResults(results *nrdb.NRDBResultContainer, query backend.DataQuery, executedQuery string) *backend.DataResponse {
+	if len(results.Results) == 0 {
+		return &backend.DataResponse{}
+	}
+	resp := formatStandardQuery(results, query)
+	for _, frame := range resp.Frames {
+		frame.Meta = &data.FrameMeta{
+			Type:                   data.FrameTypeTable,
+			PreferredVisualization: data.VisTypeTable,
+			ExecutedQueryString:    executedQuery,
+		}
+	}
+	return resp
+}
+
 // extractLogTimestamp converts the NR timestamp field (epoch milliseconds) to time.Time.
 func extractLogTimestamp(result map[string]interface{}) time.Time {
 	if ts, ok := result["timestamp"].(float64); ok && ts > 0 {

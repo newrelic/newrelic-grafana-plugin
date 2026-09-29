@@ -1,0 +1,14 @@
+[
+  { "query": "SELECT message FROM Log", "showFormat": true },
+  { "query": "SELECT count(*) FROM Log", "showFormat": true },
+  { "query": "SELECT latest(message) FROM Log FACET hostname", "showFormat": true },
+  { "query": "SELECT count(*) FROM Log FACET hostname TIMESERIES", "showFormat": false },
+  { "query": "FROM Log SELECT message", "showFormat": true },
+  { "query": "SELECT message, (SELECT latest(message) FROM Log) AS lastMessage FROM Log", "showFormat": true },
+  { "query": "SELECT message FROM LogMessage", "showFormat": false },
+  { "query": "SELECT name FROM Transaction", "showFormat": false },
+  { "query": "SELECT 'FROM Log' FROM Transaction", "showFormat": false },
+  { "query": "SELECT name FROM Transaction WHERE guid IN (FROM Log SELECT entityGuid)", "showFormat": false },
+  { "query": "FROM Transaction JOIN (FROM Log SELECT entityGuid) ON entityGuid SELECT name", "showFormat": false },
+  { "query": "-- SELECT message FROM Log\nSELECT name FROM Transaction", "showFormat": false }
+]

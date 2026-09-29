@@ -6,6 +6,7 @@ import { DataQuery, DataSourceJsonData } from '@grafana/data';
 export interface NewRelicQuery extends DataQuery {
   /** The NRQL query string to execute */
   queryText: string;
+  format?: 'logs' | 'table';
   /** Optional account ID to override the default configured account */
   accountID?: number;
   /** Whether to use Grafana's time picker for automatic time range integration */

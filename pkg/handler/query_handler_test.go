@@ -395,6 +395,61 @@ func TestHandleQuery_QueryHandler(t *testing.T) {
 	}
 }
 
+func TestHandleQuery_LogOutputFormat(t *testing.T) {
+	results := &nrdb.NRDBResultContainer{Results: []nrdb.NRDBResult{{"message": "hello", "hostname": "web-1"}}}
+	config := &models.PluginSettings{Secrets: &models.SecretPluginSettings{AccountId: 123456}}
+	for _, tt := range []struct {
+		name, queryJSON string
+		wantFields      []string
+	}{
+		{"default logs", `{"queryText":"SELECT message, hostname FROM Log"}`, []string{"timestamp", "body", "severity", "id", "labels"}},
+		{"explicit logs", `{"queryText":"SELECT message, hostname FROM Log","format":"logs"}`, []string{"timestamp", "body", "severity", "id", "labels"}},
+		{"table", `{"queryText":"SELECT message, hostname FROM Log","format":"table"}`, []string{"time", "hostname", "message"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := HandleQuery(context.Background(), &mockNRDBExecutor{results: results}, config, backend.DataQuery{RefID: "A", JSON: []byte(tt.queryJSON)})
+			if !assert.NoError(t, resp.Error) || !assert.Len(t, resp.Frames, 1) {
+				return
+			}
+			fields := make([]string, 0, len(resp.Frames[0].Fields))
+			for _, field := range resp.Frames[0].Fields {
+				fields = append(fields, field.Name)
+			}
+			if tt.name == "table" {
+				assert.Equal(t, "time", fields[0])
+				assert.ElementsMatch(t, tt.wantFields, fields)
+			} else {
+				assert.Equal(t, tt.wantFields, fields)
+			}
+		})
+	}
+}
+
+func TestFormatQueryResults_LogAggregateTable(t *testing.T) {
+	results := &nrdb.NRDBResultContainer{Results: []nrdb.NRDBResult{{"count": float64(3)}}}
+	resp := formatQueryResults(results, backend.DataQuery{RefID: "A"}, "SELECT count(*) FROM Log", "table")
+	if assert.Len(t, resp.Frames, 1) && assert.Len(t, resp.Frames[0].Fields, 2) {
+		assert.Equal(t, "time", resp.Frames[0].Fields[0].Name)
+		assert.Equal(t, "count", resp.Frames[0].Fields[1].Name)
+		count, _ := resp.Frames[0].Fields[1].ConcreteAt(0)
+		assert.Equal(t, float64(3), count)
+	}
+}
+
+func TestHandleQuery_LogTableCountAttribute(t *testing.T) {
+	results := &nrdb.NRDBResultContainer{Results: []nrdb.NRDBResult{{"count": float64(3)}}}
+	config := &models.PluginSettings{Secrets: &models.SecretPluginSettings{AccountId: 123456}}
+	query := backend.DataQuery{RefID: "A", JSON: []byte(`{"queryText":"SELECT count FROM Log LIMIT 1","format":"table"}`)}
+	resp := HandleQuery(context.Background(), &mockNRDBExecutor{results: results}, config, query)
+	if !assert.NoError(t, resp.Error) || !assert.Len(t, resp.Frames, 1) {
+		return
+	}
+	if assert.Len(t, resp.Frames[0].Fields, 2) {
+		assert.Equal(t, "time", resp.Frames[0].Fields[0].Name)
+		assert.Equal(t, "count", resp.Frames[0].Fields[1].Name)
+	}
+}
+
 func TestNRQLExecutionError_QueryHandler(t *testing.T) {
 	t.Run("Error with wrapped error", func(t *testing.T) {
 		wrappedErr := errors.New("internal error")

@@ -201,13 +201,20 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 	}
 
 	log.DefaultLogger.Debug("Query executed", "refId", query.RefID, "responseType", fmt.Sprintf("%T", results))
+	return formatQueryResults(results, query, nrqlQueryText, qm.Format)
+}
 
+func formatQueryResults(results interface{}, query backend.DataQuery, nrqlQueryText, format string) *backend.DataResponse {
 	// First, try legacy formatters for known response types
 	// Only use universal formatter as a fallback for unhandled cases
 	switch r := results.(type) {
 	case *nrdb.NRDBResultContainer:
 		// Route log queries to the log formatter for proper Logs panel rendering
 		if IsLogQuery(nrqlQueryText) {
+			if format == "table" {
+				log.DefaultLogger.Debug("Using log table formatter", "refId", query.RefID)
+				return formatter.FormatLogTableResults(r, query, nrqlQueryText)
+			}
 			log.DefaultLogger.Debug("Using log formatter", "refId", query.RefID)
 			return formatter.FormatLogResults(r, query, nrqlQueryText)
 		}
@@ -226,39 +233,43 @@ func HandleQuery(ctx context.Context, executor nrdbiface.NRDBQueryExecutor, conf
 		return formatter.FormatUniversal(results, query)
 
 	case *nrdb.NRDBResultContainerMultiResultCustomized:
-		// Check if RawResponse contains nested facets structure
-		log.DefaultLogger.Debug("Checking RawResponse for nested facets", "refId", query.RefID, "hasRawResponse", r.RawResponse != nil)
-		if r.RawResponse != nil {
-			log.DefaultLogger.Debug("RawResponse keys", "refId", query.RefID, "keys", func() []string {
-				keys := make([]string, 0, len(r.RawResponse))
-				for k := range r.RawResponse {
-					keys = append(keys, k)
-				}
-				return keys
-			}())
-
-			if facets, hasFacets := r.RawResponse["facets"]; hasFacets && facets != nil {
-				log.DefaultLogger.Debug("Detected nested facets in RawResponse, using universal formatter", "refId", query.RefID)
-				return formatter.FormatUniversal(r.RawResponse, query)
-			}
-		}
-
-		log.DefaultLogger.Debug("Using faceted timeseries formatter", "refId", query.RefID)
-		legacyResp := formatter.FormatFacetedTimeseriesResults(r, query)
-
-		// If legacy formatter succeeded, use it
-		if legacyResp.Error == nil && len(legacyResp.Frames) > 0 {
-			log.DefaultLogger.Debug("Faceted timeseries formatter succeeded", "refId", query.RefID, "frameCount", len(legacyResp.Frames))
-			return legacyResp
-		}
-
-		// Legacy formatter failed, try universal formatter
-		log.DefaultLogger.Debug("Faceted timeseries formatter returned no data, trying universal formatter", "refId", query.RefID)
-		return formatter.FormatUniversal(results, query)
+		return formatFacetedQueryResults(r, query)
 
 	default:
 		// Unknown response type - use universal formatter
 		log.DefaultLogger.Debug("Unknown response type, using universal formatter", "refId", query.RefID, "type", fmt.Sprintf("%T", results))
 		return formatter.FormatUniversal(results, query)
 	}
+}
+
+func formatFacetedQueryResults(results *nrdb.NRDBResultContainerMultiResultCustomized, query backend.DataQuery) *backend.DataResponse {
+	// Check if RawResponse contains nested facets structure
+	log.DefaultLogger.Debug("Checking RawResponse for nested facets", "refId", query.RefID, "hasRawResponse", results.RawResponse != nil)
+	if results.RawResponse != nil {
+		log.DefaultLogger.Debug("RawResponse keys", "refId", query.RefID, "keys", func() []string {
+			keys := make([]string, 0, len(results.RawResponse))
+			for k := range results.RawResponse {
+				keys = append(keys, k)
+			}
+			return keys
+		}())
+
+		if facets, hasFacets := results.RawResponse["facets"]; hasFacets && facets != nil {
+			log.DefaultLogger.Debug("Detected nested facets in RawResponse, using universal formatter", "refId", query.RefID)
+			return formatter.FormatUniversal(results.RawResponse, query)
+		}
+	}
+
+	log.DefaultLogger.Debug("Using faceted timeseries formatter", "refId", query.RefID)
+	legacyResp := formatter.FormatFacetedTimeseriesResults(results, query)
+
+	// If legacy formatter succeeded, use it
+	if legacyResp.Error == nil && len(legacyResp.Frames) > 0 {
+		log.DefaultLogger.Debug("Faceted timeseries formatter succeeded", "refId", query.RefID, "frameCount", len(legacyResp.Frames))
+		return legacyResp
+	}
+
+	// Legacy formatter failed, try universal formatter
+	log.DefaultLogger.Debug("Faceted timeseries formatter returned no data, trying universal formatter", "refId", query.RefID)
+	return formatter.FormatUniversal(results, query)
 }

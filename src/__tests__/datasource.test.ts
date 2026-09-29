@@ -1,4 +1,4 @@
-import { DataSourceInstanceSettings } from '@grafana/data';
+import { DataSourceInstanceSettings, SupplementaryQueryType, SupplementaryQueryOptions } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { NewRelicDataSourceOptions, NewRelicQuery } from '../types';
 
@@ -18,5 +18,27 @@ describe('DataSource.filterQuery', () => {
 
   it.each([3, 121, 140, 1.5])('skips the query with invalid timeout %p', (value) => {
     expect(ds.filterQuery(query(value))).toBe(false);
+  });
+});
+
+describe('DataSource.getSupplementaryQuery', () => {
+  const ds = new DataSource({ jsonData: {} } as DataSourceInstanceSettings<NewRelicDataSourceOptions>);
+
+  it('does not carry table output into the log volume query', () => {
+    const originalQuery: NewRelicQuery = {
+      refId: 'A',
+      queryText: "SELECT message FROM Log WHERE hostname = 'web-1'",
+      format: 'table',
+    };
+    const result = ds.getSupplementaryQuery(
+      { type: SupplementaryQueryType.LogsVolume } as SupplementaryQueryOptions,
+      originalQuery
+    );
+    expect(result).toEqual(expect.objectContaining({
+      refId: 'A-logs-volume',
+      queryText: "SELECT count(*) FROM Log WHERE hostname = 'web-1' TIMESERIES",
+    }));
+    expect(result?.format).toBeUndefined();
+    expect(originalQuery.format).toBe('table');
   });
 });
